@@ -23,6 +23,7 @@ body {
     position: relative;
     z-index: 100;
 }
+#header .back-link { margin-right: 12px; flex-shrink: 0; }
 #header h1 { font-size: 16px; font-weight: 600; flex: 1; }
 #header .beta-badge {
     display: inline-block;
