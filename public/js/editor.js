@@ -523,6 +523,49 @@ function engineInternalRun() {
     finally { GradingState.engine.internal = false; }
 }
 
+// Resolve when Entry.engine has fully settled to state === 'stop'.
+//
+// Why this exists: Entry.engine.toggleStop() is async — synchronously it only
+// sets state = 'stopping', then awaits Promise.all(execPromises), then runs
+// cleanup (entity/variable snapshot restore, threads clear) and finally sets
+// state = 'stop'. Entry.engine.toggleRun() has a `this.state === 'stop'` branch
+// that owns fireEvent('start') and snapshot capture; if we call toggleRun()
+// while state is still 'stopping', that branch is skipped → scripts never
+// execute and the test silently records zero output → guaranteed fail.
+//
+// This caused the "first test always wrong when user clicked ▶ before grading"
+// bug. We call this at the start of runAllTests() (and between iterations) so
+// the engine is in a clean 'stop' state before the first engineInternalRun().
+//
+// Triggers a stop only if state === 'run'; for 'stopping' or 'pause' we just
+// wait. 4s cap keeps the chain alive even if Promise.all(execPromises) hangs
+// — pathological scripts hit the per-test timeout instead.
+function waitForEngineStop() {
+    return new Promise(function (resolve) {
+        if (!window.Entry || !Entry.engine) return resolve();
+        if (Entry.engine.state === 'stop') return resolve();
+        if (Entry.engine.state === 'run') {
+            GradingState.engine.internal = true;
+            try {
+                var p = Entry.engine.toggleStop();
+                // Don't await the returned promise directly — toggleStop's
+                // generator wrapper can reject on cleanup errors. Polling state
+                // is the source of truth.
+                if (p && typeof p.catch === 'function') p.catch(function () {});
+            } catch (e) {}
+            finally { GradingState.engine.internal = false; }
+        }
+        var attempts = 0;
+        var iv = setInterval(function () {
+            if (!window.Entry || !Entry.engine || Entry.engine.state === 'stop' || attempts > 200) {
+                clearInterval(iv);
+                resolve();
+            }
+            attempts++;
+        }, 20);
+    });
+}
+
 // Apply test case setup to Entry's variables/lists.
 // Called TWICE per test: once before engineInternalRun(), once after —
 // Python mode converts code→blocks synchronously during toggleRun() and
@@ -710,7 +753,11 @@ function runAllTests(cases, title, mode) {
     });
     renderGradeResults(results, true, mode);
 
-    var chain = Promise.resolve();
+    // Chain on waitForEngineStop() so the user can click ▶ and then 테스트하기
+    // without the first case silently failing — see waitForEngineStop() comment
+    // for the underlying toggleStop/toggleRun async race. Between tests we wait
+    // again because runSingleTest.finish() also fires-and-forgets toggleStop.
+    var chain = waitForEngineStop();
     cases.forEach(function (testCase, idx) {
         chain = chain.then(function () {
             if (GradingState.cancelled) return;
@@ -723,6 +770,11 @@ function runAllTests(cases, title, mode) {
                 results[idx].errorMessage = result.errorMessage;
                 results[idx].timeout = result.timeout;
                 renderGradeResults(results, idx < cases.length - 1, mode);
+            }).then(function () {
+                // Per-iteration drain: ensures the next runSingleTest's
+                // engineInternalRun starts from a fully-settled stop state.
+                if (GradingState.cancelled) return;
+                return waitForEngineStop();
             });
         });
     });
