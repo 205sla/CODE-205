@@ -81,28 +81,28 @@
         <!-- Language -->
         <script src="lib/entry-js/extern/lang/ko.js"></script>
 
-        <!-- CreateJS (CDN) -->
-        <script src="https://playentry.org/lib/PreloadJS/lib/preloadjs-0.6.0.min.js"></script>
-        <script src="https://playentry.org/lib/EaselJS/lib/easeljs-0.8.0.min.js"></script>
-        <script src="https://playentry.org/lib/SoundJS/lib/soundjs-0.6.0.min.js"></script>
-        <script src="https://playentry.org/lib/SoundJS/lib/flashaudioplugin-0.6.0.min.js"></script>
+        <!-- CreateJS (local vendored — was playentry.org/lib/{Preload,Easel,Sound}JS) -->
+        <script src="lib/vendor/createjs/preloadjs-0.6.0.min.js"></script>
+        <script src="lib/vendor/createjs/easeljs-0.8.0.min.js"></script>
+        <script src="lib/vendor/createjs/soundjs-0.6.0.min.js"></script>
+        <script src="lib/vendor/createjs/flashaudioplugin-0.6.0.min.js"></script>
 
-        <!-- Core libs (CDN) -->
-        <script src="https://playentry.org/lib/lodash/lodash.min.js"></script>
-        <script src="https://playentry.org/lib/jquery/jquery.min.js"></script>
-        <script src="https://playentry.org/lib/jquery-ui/jquery-ui.min.js"></script>
-        <script src="https://playentry.org/lib/velocity/velocity.min.js"></script>
+        <!-- Core libs (local vendored — was playentry.org/lib) -->
+        <script src="lib/vendor/lodash/lodash.min.js"></script>
+        <script src="lib/vendor/jquery/jquery.min.js"></script>
+        <script src="lib/vendor/jquery-ui/jquery-ui.min.js"></script>
+        <script src="lib/vendor/velocity/velocity.min.js"></script>
 
-        <!-- CodeMirror (CDN) -->
-        <script src="https://playentry.org/lib/codemirror/lib/codemirror.js"></script>
-        <script src="https://playentry.org/lib/codemirror/addon/hint/show-hint.js"></script>
-        <script src="https://playentry.org/lib/codemirror/addon/lint/lint.js"></script>
-        <script src="https://playentry.org/lib/codemirror/addon/selection/active-line.js"></script>
-        <script src="https://playentry.org/lib/codemirror/mode/javascript/javascript.js"></script>
-        <script src="https://playentry.org/lib/codemirror/addon/hint/javascript-hint.js"></script>
-        <script src="https://playentry.org/js/jshint.js"></script>
-        <script src="https://playentry.org/lib/fuzzy/lib/fuzzy.js"></script>
-        <script src="https://playentry.org/js/ws/python.js"></script>
+        <!-- CodeMirror (local vendored — was playentry.org/lib/codemirror, jshint from cdnjs 2.9.5) -->
+        <script src="lib/vendor/codemirror/lib/codemirror.js"></script>
+        <script src="lib/vendor/codemirror/addon/hint/show-hint.js"></script>
+        <script src="lib/vendor/codemirror/addon/lint/lint.js"></script>
+        <script src="lib/vendor/codemirror/addon/selection/active-line.js"></script>
+        <script src="lib/vendor/codemirror/mode/javascript/javascript.js"></script>
+        <script src="lib/vendor/codemirror/addon/hint/javascript-hint.js"></script>
+        <script src="lib/vendor/jshint/jshint.js"></script>
+        <script src="lib/vendor/fuzzy/fuzzy.js"></script>
+        <script src="lib/vendor/python/python.js"></script>
 
         <!-- Entry extern utils (local) -->
         <script src="lib/entry-js/extern/util/filbert.js"></script>
@@ -111,12 +111,12 @@
         <script src="lib/entry-js/extern/util/handle.js"></script>
         <script src="lib/entry-js/extern/util/bignumber.min.js"></script>
 
-        <!-- Socket.io (CDN) -->
-        <script src="https://playentry.org/lib/socket.io-client/socket.io.js"></script>
+        <!-- Socket.io (local vendored — was playentry.org/lib/socket.io-client) -->
+        <script src="lib/vendor/socket.io-client/socket.io.js"></script>
 
-        <!-- React (CDN) -->
-        <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-        <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+        <!-- React 18.3.1 (local vendored — was unpkg.com) -->
+        <script src="lib/vendor/react/react.production.min.js"></script>
+        <script src="lib/vendor/react/react-dom.production.min.js"></script>
 
         <!-- Entry LMS (local) -->
         <script src="lib/entry-lms/dist/assets/app.js"></script>

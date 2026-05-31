@@ -38,9 +38,23 @@
 - 동일 출처(Entry Labs)의 다른 오픈소스 패키지가 MIT 또는 Apache 2.0을 사용하는 점을 근거로 동일 기조의 재배포 허용을 가정하나, 공식 확인은 되지 않았습니다.
 - 이 저장소를 포크/재배포하려는 분은 [Entry Labs](https://playentry.org)에 직접 문의하여 라이선스 상태를 확인하시기 바랍니다.
 
-## 외부 CDN 의존성
+## 번들된 제3자 라이브러리 (vendored)
 
-런타임에 로드되는 범용 라이브러리(jQuery, lodash, React, CodeMirror 등)는 각자의 원본 배포판 라이선스를 따릅니다. `public/editor.html`의 `<script src="https://playentry.org/lib/...">` / `<script src="https://unpkg.com/...">` 경로 참조.
+에디터(`public/editor.html`)가 사용하는 범용 라이브러리는 `public/lib/vendor/` 아래에 로컬 번들되어 있습니다. 각자의 원본 배포판 라이선스를 따릅니다(모두 MIT/BSD 계열).
+
+| 라이브러리 | 버전 | 라이선스 | 출처 |
+|---|---|---|---|
+| jQuery | 1.9.1 | MIT | playentry.org 배포본 |
+| jQuery UI | 1.10.4 | MIT | playentry.org 배포본 |
+| Lodash | 4.17.x | MIT | playentry.org 배포본 |
+| Velocity | 1.2.3 | MIT | playentry.org 배포본 |
+| CodeMirror | 5.12.0 | MIT | playentry.org 배포본 |
+| CreateJS (Preload/Easel/Sound) | 0.6.0 / 0.8.0 / 0.6.0 | MIT | playentry.org 배포본 |
+| Socket.IO client | — | MIT | playentry.org 배포본 |
+| React / ReactDOM | 18.3.1 | MIT | unpkg.com |
+| JSHint | 2.9.5 | MIT | cdnjs |
+
+> 이전에는 이 라이브러리들을 `https://playentry.org/lib/...` 및 `https://unpkg.com/...`에서 런타임 로드했으나, 완전 오프라인 동작과 외부 CDN 경로 변경 리스크 제거를 위해 로컬 번들로 전환했습니다. `python.js`(CodeMirror Python mode)도 함께 번들.
 
 ## 엔트리봇 및 관련 브랜드
 
