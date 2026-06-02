@@ -1,6 +1,7 @@
 node_modules/
 # Claude Code config (skills 포함 전체 로컬 유지)
 .claude/
+.agents/
 *.key
 *.pem
 *.pub

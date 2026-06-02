@@ -139,8 +139,10 @@ CODE-205/
 │   ├── config.js                 # 환경변수·상수
 │   ├── db/
 │   │   ├── init.js               # better-sqlite3 싱글톤
-│   │   └── schema.sql            # users / solutions / submissions / schema_version
+│   │   ├── schema.sql            # users / solutions / submissions / schema_version
+│   │   └── userScoped.js         # user_id FK 테이블 공용 헬퍼 (행 수·일괄 삭제)
 │   ├── routes/
+│   │   ├── _respond.js           # fail() + errorHandler 응답 헬퍼
 │   │   ├── seo.js                # /sitemap.xml
 │   │   ├── problems.js           # /api/problems/*
 │   │   ├── sprites.js            # /api/sprites
@@ -175,7 +177,7 @@ CODE-205/
 │   ├── index.html                # 메인 화면
 │   ├── editor.html               # Entry 블록 코딩 에디터
 │   ├── login.html / signup.html  # 회원 인증 폼
-│   ├── profile.html              # 프로필 페이지 (4섹션)
+│   ├── profile.html              # 프로필 페이지 (6섹션)
 │   ├── contribute.html / privacy.html / terms.html
 │   ├── css/
 │   │   ├── common.css            # 정적 페이지 공통 (헤더·푸터·user-menu)
