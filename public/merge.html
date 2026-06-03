@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>엔트리 작품 합치기 · CODE 205</title>
+    <meta name="description" content="여러 엔트리 작품(.ent) 파일을 브라우저에서 하나로 합칩니다. 업로드 없이 내 컴퓨터에서 처리되어 안전하고, 장면·오브젝트·변수를 자동으로 병합합니다.">
+    <meta name="keywords" content="CODE 205, 엔트리, 작품 합치기, .ent, ent 합치기, 엔트리 머지, 블록 코딩">
+    <meta name="author" content="205">
+    <meta name="theme-color" content="#2c313d">
+    <meta name="robots" content="index, follow">
+    <link rel="canonical" href="https://code.205.kr/merge">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="CODE 205">
+    <meta property="og:title" content="엔트리 작품 합치기 · CODE 205">
+    <meta property="og:description" content="여러 엔트리 작품(.ent)을 브라우저에서 업로드 없이 하나로 합치는 무료 도구.">
+    <meta property="og:url" content="https://code.205.kr/merge">
+    <meta property="og:locale" content="ko_KR">
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="엔트리 작품 합치기 · CODE 205">
+    <meta name="twitter:description" content="여러 엔트리 작품(.ent)을 브라우저에서 업로드 없이 하나로 합칩니다.">
+
+    <link href="css/common.css" rel="stylesheet">
+    <link href="css/merge.css" rel="stylesheet">
+</head>
+<body>
+    <header>
+        <a href="/" class="back-link">← 메인</a>
+        <span class="header-title">CODE 205 <span class="beta-badge">BETA</span></span>
+    </header>
+
+    <main class="container">
+        <h1>엔트리 작품 합치기</h1>
+        <p class="subtitle">여러 엔트리 작품(.ent) 파일을 하나로 합쳐보세요</p>
+        <p class="limit-info">파일당 최대 50MB · 전체 최대 150MB · 최대 10개 · 모든 처리는 내 컴퓨터(브라우저)에서</p>
+
+        <div class="drop-zone" id="dropZone" role="button" tabindex="0" aria-label=".ent 파일 선택">
+            <div class="icon">📂</div>
+            <p>.ent 파일을 여기에 드래그하거나 클릭하여 선택</p>
+        </div>
+        <input type="file" id="fileInput" multiple accept=".ent" aria-hidden="true">
+
+        <ul class="file-list" id="fileList"></ul>
+        <div class="total-size" id="totalSize"></div>
+
+        <button id="mergeBtn" disabled>작품 합치기</button>
+        <button class="extra-toggle" id="extraToggle" type="button">기타 설정</button>
+        <div class="extra-settings" id="extraSettings">
+            <label><input type="checkbox" id="clearRemake"> 리메이크 표시 지우기</label>
+            <label><input type="checkbox" id="hideTimerAnswer"> 대답, 초시계 숨기기</label>
+        </div>
+        <div class="status" id="status"></div>
+
+        <p class="merge-note">
+            합친 결과 <code>머지.ent</code>는 <a href="https://playentry.org" target="_blank" rel="noopener noreferrer">playentry.org</a>
+            → 작품 만들기 → 파일 → 오프라인 작품 불러오기로 열 수 있습니다.
+        </p>
+    </main>
+
+    <!-- 진행 오버레이 -->
+    <div class="progress-overlay" id="progressOverlay">
+        <div class="progress-box">
+            <div class="progress-icon">⚙️</div>
+            <p class="progress-msg" id="progressMsg">작품을 합치는 중...</p>
+            <div class="progress-bar-wrap">
+                <div class="progress-bar-fill" id="progressBar"></div>
+            </div>
+            <div class="progress-pct" id="progressPct">0%</div>
+            <button class="progress-close" id="progressClose">닫기</button>
+        </div>
+    </div>
+
+    <!-- 병합 엔진 (로컬 처리) -->
+    <script src="js/merge/pako.min.js"></script>
+    <script src="js/merge/tar.js"></script>
+    <script src="js/merge/merge-engine.js"></script>
+    <script src="js/merge/merge-app.js"></script>
+    <!-- 공통 헤더/푸터 -->
+    <script src="js/dom-escape.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/common-header.js"></script>
+    <script src="js/common-footer.js"></script>
+</body>
+</html>
