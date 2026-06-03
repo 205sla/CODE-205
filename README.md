@@ -61,10 +61,18 @@ npm start
 
 ### 정적 페이지
 - `/contribute.html` — 문제 기여 가이드
+- `/merge` — 엔트리 작품(.ent) 합치기 도구 (클라이언트 사이드)
 - `/privacy.html` — 개인정보 처리방침 (회원 데이터 수집·보유·삭제 정책)
 - `/terms.html` — 이용약관
 
 ## 주요 기능
+
+### 작품 합치기 (`/merge`)
+- 여러 엔트리 작품(`.ent`)을 하나로 합치는 도구. **처리는 전량 브라우저(클라이언트 사이드)** — 파일이 서버로 업로드되지 않아 안전하고 서버 부하 0
+- 각 작품의 장면(scene) ID를 난수화해 충돌을 막고, 오브젝트·변수·리스트를 재귀 병합. `대답`·`초시계` 등 특수 변수는 중복 제거
+- 파일당 50MB · 전체 150MB · 최대 10개. 합친 결과 `머지.ent`를 다운로드 → playentry.org 오프라인 작품 불러오기로 사용
+- 진행률은 **바이트 가중 + 단계별**로 표시(수집 82% → 후처리 88% → 압축 100%), gzip은 스트리밍으로 세분 진행
+- 기타 설정: "리메이크 표시 지우기", "대답·초시계 숨기기". 병합 엔진은 `extensions/entry-merge-extension` 로직 이식, 순수 함수는 `tests/merge.test.js`로 검증
 
 ### 회원 시스템 (선택)
 - **비회원으로도 핵심 기능 그대로 이용 가능**. 회원 가입은 추가 가치(서버 동기화·코드 보관·통계)를 위한 선택
@@ -139,8 +147,10 @@ CODE-205/
 │   ├── config.js                 # 환경변수·상수
 │   ├── db/
 │   │   ├── init.js               # better-sqlite3 싱글톤
-│   │   └── schema.sql            # users / solutions / submissions / schema_version
+│   │   ├── schema.sql            # users / solutions / submissions / schema_version
+│   │   └── userScoped.js         # user_id FK 테이블 공용 헬퍼 (행 수·일괄 삭제)
 │   ├── routes/
+│   │   ├── _respond.js           # fail() + errorHandler 응답 헬퍼
 │   │   ├── seo.js                # /sitemap.xml
 │   │   ├── problems.js           # /api/problems/*
 │   │   ├── sprites.js            # /api/sprites
@@ -175,13 +185,14 @@ CODE-205/
 │   ├── index.html                # 메인 화면
 │   ├── editor.html               # Entry 블록 코딩 에디터
 │   ├── login.html / signup.html  # 회원 인증 폼
-│   ├── profile.html              # 프로필 페이지 (4섹션)
+│   ├── profile.html              # 프로필 페이지 (6섹션)
 │   ├── contribute.html / privacy.html / terms.html
+│   ├── merge.html                # 작품 합치기 도구 (/merge, 클라이언트 사이드)
 │   ├── css/
 │   │   ├── common.css            # 정적 페이지 공통 (헤더·푸터·user-menu)
 │   │   ├── auth.css              # 로그인·가입 폼
 │   │   ├── profile.css           # 프로필 카드·통계 그리드
-│   │   ├── index.css / editor.css / contribute.css
+│   │   ├── index.css / editor.css / contribute.css / merge.css
 │   ├── js/
 │   │   ├── common-header.js      # 헤더 user-menu 동적 주입
 │   │   ├── common-footer.js      # disclaimer 푸터
@@ -191,18 +202,20 @@ CODE-205/
 │   │   ├── submission-sync.js    # 정답 코드 저장·복원
 │   │   ├── index.js              # 메인 화면 스크립트
 │   │   ├── editor.js             # 에디터 통합 로직
-│   │   └── editor-pure.js        # 순수 함수 (테스트 대상)
+│   │   ├── editor-pure.js        # 순수 함수 (테스트 대상)
+│   │   └── merge/                # 작품 합치기: pako·tar·merge-engine·merge-app
 │   ├── sprites/                  # 로컬 스프라이트 카탈로그
 │   └── lib/                      # Entry 라이브러리 (로컬 번들, ~64MB)
 ├── db/                           # 런타임 SQLite 파일 (gitignored)
 ├── logs/                         # PM2 출력 로그 (gitignored, pm2-logrotate로 회전)
-└── tests/                        # node:test 단위·통합 테스트 (210개)
+└── tests/                        # node:test 단위·통합 테스트 (224개)
     ├── format.test.js / lists.test.js / markdown.test.js / evaluate.test.js
     ├── userService.test.js / authService.test.js / auth.routes.test.js
     ├── solutionService.test.js / submissionService.test.js
     ├── me.routes.test.js
     ├── db.init.test.js          # 스키마 마이그레이션 baseline 검증
-    └── csp.test.js
+    ├── csp.test.js
+    └── merge.test.js          # 작품 합치기 엔진·라우트
 ```
 
 ## 문제 추가
@@ -270,7 +283,7 @@ CODE-205/
 npm test
 ```
 
-**210개 테스트** (이전 단위 57 + 회원·CSP·풀이·코드 신규 153)가 통과해야 배포 가능.
+**224개 테스트** (이전 210 + 작품 합치기 신규 14)가 통과해야 배포 가능.
 
 ### CI/CD 파이프라인
 
@@ -279,7 +292,7 @@ npm test
 ```
 push → [ test ] ──(needs: test)──▶ [ deploy ] ──▶ [ health check ] → live
        npm ci                       git pull                HTTP 200 확인
-       210 tests                    npm install --omit=dev
+       224 tests                    npm install --omit=dev
        ~15초                        pm2 startOrReload ecosystem.config.js
                                     pm2 save
                                     ~10초

@@ -96,6 +96,13 @@ function createApp(opts = {}) {
     // 정적 파일
     app.use(express.static(PUBLIC_DIR));
 
+    // clean URL: /merge → public/merge.html (엔트리 작품 합치기 도구)
+    //   - editor scope가 아니므로 위 helmet 분기에서 strict CSP가 적용됨
+    //   - 합치기 처리는 전량 클라이언트 사이드 — 서버는 정적 페이지만 서빙
+    app.get('/merge', (req, res) => {
+        res.sendFile(path.join(PUBLIC_DIR, 'merge.html'));
+    });
+
     // 세션 (커스텀 store 주입 가능)
     app.use(session({
         store: opts.sessionStore || defaultSessionStore(),

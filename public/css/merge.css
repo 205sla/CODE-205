@@ -1,0 +1,264 @@
+/* ============================================================
+   merge.css — /merge (엔트리 작품 합치기) 페이지 전용.
+   header/푸터(disclaimer) chrome은 common.css 재사용.
+   컴포넌트 스타일은 extensions/entry-merge-extension/css/style.css 에서
+   이식하되, 광고/외부 홍보(.tools-family-link·.footer·.version-badge)는 제외.
+   ============================================================ */
+
+:root {
+  --entry-green: #32D27D;
+  --entry-blue: #5096F5;
+  --entry-purple: #6E5AE6;
+  --entry-red: #FA5536;
+  --bg-light: #f8fafd;
+  --text-sub: #666;
+  --text-muted: #999;
+}
+
+/* ---------- 페이지 카드 (헤더 아래 중앙 정렬) ---------- */
+.container {
+  background: #fff;
+  border-radius: 20px;
+  box-shadow: 0 8px 32px rgba(110, 90, 230, 0.08), 0 2px 8px rgba(0, 0, 0, 0.04);
+  padding: 36px;
+  max-width: 600px;
+  width: calc(100% - 32px);
+  margin: 36px auto;
+  border-top: 4px solid;
+  border-image: linear-gradient(90deg, var(--entry-green), var(--entry-blue), var(--entry-purple)) 1;
+}
+
+h1 {
+  text-align: center;
+  font-size: 1.6rem;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, var(--entry-blue), var(--entry-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.subtitle {
+  text-align: center;
+  color: var(--text-sub);
+  font-size: 0.9rem;
+  margin-bottom: 6px;
+}
+.limit-info {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin-bottom: 24px;
+}
+
+/* ---------- 드롭존 ---------- */
+.drop-zone {
+  border: 2px dashed #b8cfe8;
+  border-radius: 14px;
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.25s;
+  background: var(--bg-light);
+  margin-bottom: 16px;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--entry-blue);
+  background: #edf4fe;
+  box-shadow: 0 0 0 4px rgba(80, 150, 245, 0.1);
+}
+.drop-zone p { color: var(--text-sub); font-size: 0.95rem; }
+.drop-zone .icon { font-size: 2rem; margin-bottom: 8px; }
+.drop-zone:focus-visible {
+  outline: 3px solid var(--entry-blue);
+  outline-offset: 2px;
+}
+input[type="file"] { display: none; }
+
+/* ---------- 파일 목록 ---------- */
+.file-list { list-style: none; margin-bottom: 8px; }
+.file-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-light);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  font-size: 0.9rem;
+  border-left: 3px solid var(--entry-green);
+}
+.file-list li.over-size { background: #fff5f3; border-left-color: var(--entry-red); }
+.file-list li .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-list li .size { color: #888; margin-left: 12px; white-space: nowrap; }
+.file-list li.over-size .size { color: var(--entry-red); font-weight: 600; }
+.file-list li .remove {
+  margin-left: 10px;
+  background: none;
+  border: none;
+  color: var(--entry-red);
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.file-list li .remove:hover { background: #ffebe8; }
+.total-size { text-align: right; font-size: 0.82rem; color: #888; margin-bottom: 16px; }
+.total-size.over { color: var(--entry-red); font-weight: 600; }
+
+/* ---------- 합치기 버튼 ---------- */
+#mergeBtn {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--entry-blue), var(--entry-purple));
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.25s;
+  box-shadow: 0 4px 14px rgba(110, 90, 230, 0.25);
+}
+#mergeBtn:disabled { background: #c8d0dc; box-shadow: none; cursor: not-allowed; }
+#mergeBtn:not(:disabled):hover {
+  background: linear-gradient(135deg, #3d82e8, #5c48d4);
+  box-shadow: 0 6px 20px rgba(110, 90, 230, 0.35);
+  transform: translateY(-1px);
+}
+
+/* ---------- 기타 설정 ---------- */
+.extra-toggle {
+  font-size: 0.72rem;
+  color: #bbb;
+  cursor: pointer;
+  background: none;
+  border: none;
+  margin-top: 8px;
+  font-family: inherit;
+  display: inline-block;
+}
+.extra-toggle:hover { color: #999; }
+.extra-settings {
+  display: none;
+  margin-top: 8px;
+  padding: 10px 14px;
+  background: var(--bg-light);
+  border-radius: 8px;
+  text-align: left;
+}
+.extra-settings.show { display: block; }
+.extra-settings label {
+  font-size: 0.82rem;
+  color: var(--text-sub);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.extra-settings input[type="checkbox"] { accent-color: var(--entry-purple); }
+
+/* ---------- 상태 메시지 ---------- */
+.status { text-align: center; margin-top: 14px; font-size: 0.9rem; min-height: 1.2em; }
+.status.error { color: var(--entry-red); }
+.status.success { color: var(--entry-green); }
+.status.loading { color: var(--entry-purple); }
+
+/* ---------- 안내 ---------- */
+.merge-note {
+  margin-top: 18px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.merge-note code {
+  background: var(--bg-light);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.95em;
+}
+.merge-note a { color: var(--entry-purple); text-decoration: none; }
+.merge-note a:hover { text-decoration: underline; }
+
+/* ---------- 진행 오버레이 ---------- */
+.progress-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 2000;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+.progress-overlay.show { display: flex; }
+.progress-box {
+  background: #fff;
+  border-radius: 16px;
+  padding: 32px 28px 24px;
+  max-width: 380px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+  animation: popIn 0.25s ease-out;
+}
+@keyframes popIn {
+  from { transform: scale(0.9); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+.progress-box .progress-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.progress-box .progress-msg {
+  font-size: 0.95rem;
+  color: var(--text-sub);
+  line-height: 1.6;
+  margin-bottom: 18px;
+  min-height: 1.6em;
+  word-break: break-all;
+}
+.progress-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: #e8e8e8;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.progress-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--entry-blue), var(--entry-purple));
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+.progress-box .progress-pct { font-size: 0.85rem; font-weight: 600; color: var(--entry-purple); }
+.progress-box .progress-close {
+  display: none;
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  background: linear-gradient(135deg, var(--entry-blue), var(--entry-purple));
+  color: #fff;
+  box-shadow: 0 3px 10px rgba(110, 90, 230, 0.25);
+  transition: all 0.2s;
+}
+.progress-box .progress-close:hover {
+  background: linear-gradient(135deg, #3d82e8, #5c48d4);
+  transform: translateY(-1px);
+}
+
+/* ---------- 반응형 ---------- */
+@media (max-width: 480px) {
+  .container { padding: 24px 18px; border-radius: 14px; margin: 16px auto; }
+  h1 { font-size: 1.3rem; }
+  .drop-zone { padding: 28px 14px; }
+  .progress-box { padding: 24px 18px 18px; }
+}
