@@ -135,4 +135,81 @@ describe('entryCvMonitor status checks', () => {
         assert.equal(socketProbeOptions.query, 'monitor-query');
         assert.equal(socketProbeOptions.engineIoVersion, '3');
     });
+
+    it('signs in before fetching cloud server info when credentials are configured', async () => {
+        const graphqlOperations = [];
+        let signInCookie = '';
+        let cloudCookie = '';
+        const fetchImpl = async (url, options = {}) => {
+            if (url === 'https://playentry.org/ws/new') {
+                return new Response('<meta name="csrf-token" content="csrf-token">', {
+                    headers: { 'set-cookie': '_csrf=csrf-cookie; Path=/' },
+                });
+            }
+            if (url === 'https://playentry.org/graphql') {
+                const body = JSON.parse(options.body);
+                if (body.query.includes('SIGNIN_BY_USERNAME')) {
+                    graphqlOperations.push('signin');
+                    signInCookie = options.headers.cookie;
+                    return new Response(JSON.stringify({
+                        data: {
+                            signinByUsername: {
+                                id: 'user-id',
+                                username: 'monitor-user',
+                                nickname: 'Monitor',
+                            },
+                        },
+                    }), {
+                        status: 200,
+                        headers: {
+                            'content-type': 'application/json',
+                            'set-cookie': 'connect.sid=session-cookie; Path=/; HttpOnly',
+                        },
+                    });
+                }
+                if (body.query.includes('GET_CLOUD_SERVER_INFO')) {
+                    graphqlOperations.push('cloudServerInfo');
+                    cloudCookie = options.headers.cookie;
+                    return new Response(JSON.stringify({
+                        data: {
+                            cloudServerInfo: {
+                                url: 'https://cloud.playentry.org',
+                                query: 'monitor-query',
+                            },
+                        },
+                    }), {
+                        status: 200,
+                        headers: { 'content-type': 'application/json' },
+                    });
+                }
+            }
+            throw new Error(`Unexpected URL: ${url}`);
+        };
+
+        const record = await performStatusCheck({
+            projectId: 'abcdef0123456789abcdef01',
+            projectIdRedacted: 'abcdef...ef01',
+            entryId: 'monitor-user',
+            entryPassword: 'monitor-password',
+            engineIoVersion: '3',
+            type: '',
+            timeoutMs: 6000,
+        }, {
+            fetchImpl,
+            WebSocketImpl: undefined,
+            socketProbe: async () => ({
+                ok: false,
+                socketStatus: 'timeout',
+                reason: 'No welcome before 6000ms.',
+                elapsedMs: 6000,
+            }),
+        });
+
+        assert.deepEqual(graphqlOperations, ['signin', 'cloudServerInfo']);
+        assert.match(signInCookie, /_csrf=csrf-cookie/);
+        assert.match(cloudCookie, /_csrf=csrf-cookie/);
+        assert.match(cloudCookie, /connect\.sid=session-cookie/);
+        assert.equal(record.status, 'DOWN');
+        assert.equal(record.loginStatus, 'authenticated');
+    });
 });

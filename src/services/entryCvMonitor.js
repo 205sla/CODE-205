@@ -77,6 +77,8 @@ function normalizeConfig(env = process.env) {
         30000
     );
     const projectId = get('ENTRY_MONITOR_PROJECT_ID', '');
+    const entryId = get('ENTRY_MONITOR_ID', '');
+    const entryPassword = get('ENTRY_MONITOR_PASSWORD', '');
 
     const logPathRaw = get('ENTRY_MONITOR_LOG_PATH', path.join(ROOT_DIR, 'db', 'entry-cv-status.json'));
 
@@ -84,7 +86,9 @@ function normalizeConfig(env = process.env) {
         enabled: parseBool(get('ENTRY_MONITOR_ENABLED', 'false')),
         projectId,
         projectIdRedacted: redactId(projectId),
-        accountConfigured: Boolean(get('ENTRY_MONITOR_ID', '') && get('ENTRY_MONITOR_PASSWORD', '')),
+        entryId,
+        entryPassword,
+        accountConfigured: Boolean(entryId && entryPassword),
         nicknameConfigured: Boolean(get('ENTRY_MONITOR_NICKNAME', '')),
         intervalMs,
         timeoutMs,
@@ -140,6 +144,63 @@ function parseSocketIoEvent(packet) {
 
 function eventPacket(name, ...args) {
     return `42${JSON.stringify([name, ...args])}`;
+}
+
+function splitSetCookieHeader(value) {
+    const text = String(value || '');
+    if (!text) return [];
+    const result = [];
+    let start = 0;
+    for (let index = 0; index < text.length; index += 1) {
+        if (text[index] !== ',') continue;
+        const rest = text.slice(index + 1);
+        if (/^\s*[A-Za-z0-9_.-]+=/.test(rest)) {
+            result.push(text.slice(start, index).trim());
+            start = index + 1;
+        }
+    }
+    result.push(text.slice(start).trim());
+    return result.filter(Boolean);
+}
+
+function getSetCookieHeaders(headers) {
+    if (!headers) return [];
+    if (typeof headers.getSetCookie === 'function') return headers.getSetCookie();
+    const value = typeof headers.get === 'function' ? headers.get('set-cookie') : '';
+    return splitSetCookieHeader(value);
+}
+
+function createCookieJar() {
+    const jar = new Map();
+    return {
+        add(setCookieHeaders) {
+            for (const header of setCookieHeaders || []) {
+                const pair = String(header).split(';')[0] || '';
+                const separator = pair.indexOf('=');
+                if (separator <= 0) continue;
+                jar.set(pair.slice(0, separator), pair.slice(separator + 1));
+            }
+        },
+        header() {
+            return Array.from(jar.entries())
+                .map(([name, value]) => `${name}=${value}`)
+                .join('; ');
+        },
+        get(name) {
+            return jar.get(name) || '';
+        },
+    };
+}
+
+function safeGraphqlError(payload, fallback) {
+    const first = Array.isArray(payload?.errors) ? payload.errors[0] : null;
+    if (!first) return fallback;
+    const code = first.extensions?.code || first.code || '';
+    const message = first.message || '';
+    if (code && message) return `${fallback}: ${code} ${message}`;
+    if (code) return `${fallback}: ${code}`;
+    if (message) return `${fallback}: ${message}`;
+    return fallback;
 }
 
 function makeWebSocketAccept(key) {
@@ -311,10 +372,14 @@ async function fetchWithTimeout(fetchImpl, url, options, timeoutMs) {
     }
 }
 
-async function getCsrfContext(fetchImpl, timeoutMs) {
-    const response = await fetchWithTimeout(fetchImpl, 'https://playentry.org/ws/new', {}, timeoutMs);
+async function getCsrfContext(fetchImpl, timeoutMs, cookieJar) {
+    const headers = {};
+    const cookie = cookieJar?.header();
+    if (cookie) headers.cookie = cookie;
+    const response = await fetchWithTimeout(fetchImpl, 'https://playentry.org/ws/new', { headers }, timeoutMs);
+    cookieJar?.add(getSetCookieHeaders(response.headers));
     const html = await response.text();
-    const csrfCookie = (response.headers.get('set-cookie') || '').match(/_csrf=([^;]+)/)?.[1] || '';
+    const csrfCookie = cookieJar?.get('_csrf') || (response.headers.get('set-cookie') || '').match(/_csrf=([^;]+)/)?.[1] || '';
     const csrfToken = html.match(/<meta name="csrf-token" content="([^"]+)"/)?.[1] || '';
     if (!csrfCookie || !csrfToken) {
         throw new Error('Failed to obtain Entry CSRF context.');
@@ -322,25 +387,80 @@ async function getCsrfContext(fetchImpl, timeoutMs) {
     return { csrfCookie, csrfToken };
 }
 
-async function fetchCloudServerInfo(projectId, fetchImpl, timeoutMs) {
-    const { csrfCookie, csrfToken } = await getCsrfContext(fetchImpl, timeoutMs);
+async function graphqlRequest(fetchImpl, timeoutMs, { csrfToken, cookieJar, referer, body }) {
+    const headers = {
+        'content-type': 'application/json',
+        origin: 'https://playentry.org',
+        referer,
+    };
+    if (csrfToken) headers['x-csrf-token'] = csrfToken;
+    const cookie = cookieJar?.header();
+    if (cookie) headers.cookie = cookie;
+
     const response = await fetchWithTimeout(fetchImpl, 'https://playentry.org/graphql', {
         method: 'POST',
-        headers: {
-            'content-type': 'application/json',
-            'x-csrf-token': csrfToken,
-            cookie: `_csrf=${csrfCookie}`,
-            origin: 'https://playentry.org',
-            referer: `https://playentry.org/ws/${projectId}`,
+        headers,
+        body: JSON.stringify(body),
+    }, timeoutMs);
+
+    cookieJar?.add(getSetCookieHeaders(response.headers));
+    const payload = await response.json();
+    return { response, payload };
+}
+
+async function signInToEntry(config, fetchImpl, timeoutMs, session) {
+    if (!config.entryId || !config.entryPassword) return { signedIn: false };
+
+    const { response, payload } = await graphqlRequest(fetchImpl, timeoutMs, {
+        csrfToken: session.csrfToken,
+        cookieJar: session.cookieJar,
+        referer: 'https://playentry.org/signin',
+        body: {
+            query: [
+                'mutation SIGNIN_BY_USERNAME($username: String!, $password: String!, $rememberme: Boolean) {',
+                '  signinByUsername(username: $username, password: $password, rememberme: $rememberme) {',
+                '    id',
+                '    username',
+                '    nickname',
+                '  }',
+                '}',
+            ].join('\n'),
+            variables: {
+                username: config.entryId,
+                password: config.entryPassword,
+                rememberme: false,
+            },
         },
-        body: JSON.stringify({
+    });
+
+    if (!response.ok || payload.errors || !payload.data?.signinByUsername) {
+        throw new Error(safeGraphqlError(payload, 'Failed to sign in to Entry monitor account.'));
+    }
+    return { signedIn: true };
+}
+
+async function createEntrySession(config, fetchImpl, timeoutMs) {
+    const cookieJar = createCookieJar();
+    const { csrfToken } = await getCsrfContext(fetchImpl, timeoutMs, cookieJar);
+    const session = { cookieJar, csrfToken };
+    const signIn = await signInToEntry(config, fetchImpl, timeoutMs, session);
+    return { ...session, ...signIn };
+}
+
+async function fetchCloudServerInfo(projectId, fetchImpl, timeoutMs, session) {
+    const activeSession = session || await createEntrySession({}, fetchImpl, timeoutMs);
+    const { response, payload } = await graphqlRequest(fetchImpl, timeoutMs, {
+        csrfToken: activeSession.csrfToken,
+        cookieJar: activeSession.cookieJar,
+        referer: `https://playentry.org/ws/${projectId}`,
+        body: {
             query: 'query GET_CLOUD_SERVER_INFO($id: ID!) { cloudServerInfo(id: $id) { url query } }',
             variables: { id: projectId },
-        }),
-    }, timeoutMs);
-    const payload = await response.json();
+        },
+    });
+
     if (!response.ok || payload.errors || !payload.data?.cloudServerInfo) {
-        throw new Error('Failed to fetch cloudServerInfo.');
+        throw new Error(safeGraphqlError(payload, 'Failed to fetch cloudServerInfo.'));
     }
     return payload.data.cloudServerInfo;
 }
@@ -550,7 +670,8 @@ async function performStatusCheck(config, deps = {}) {
     }
 
     try {
-        const cloudServer = await fetchCloudServerInfo(config.projectId, fetchImpl, config.timeoutMs);
+        const entrySession = await createEntrySession(config, fetchImpl, config.timeoutMs);
+        const cloudServer = await fetchCloudServerInfo(config.projectId, fetchImpl, config.timeoutMs, entrySession);
         const socketResult = await socketProbe({
             url: cloudServer.url,
             query: cloudServer.query,
@@ -563,6 +684,7 @@ async function performStatusCheck(config, deps = {}) {
             status: socketResult.ok ? 'UP' : 'DOWN',
             ok: socketResult.ok,
             socketStatus: socketResult.socketStatus,
+            loginStatus: entrySession.signedIn ? 'authenticated' : 'anonymous',
             reason: socketResult.reason,
             elapsedMs: socketResult.elapsedMs,
         };
