@@ -4,7 +4,7 @@
     {
       "name": "entry-editor",
       "runtimeExecutable": "node",
-      "runtimeArgs": ["server.js"],
+      "runtimeArgs": ["src/server.js"],
       "port": 3000,
       "autoPort": true
     }
