@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const { ROOT_DIR } = require('../config');
@@ -57,7 +58,8 @@ function redactId(value) {
 }
 
 function normalizeConfig(env = process.env) {
-    const envFile = env.ENTRY_MONITOR_ENV_FILE || '';
+    const defaultEnvFile = path.join(os.homedir(), '.entry-cv-monitor', 'code205-entry-cv-monitor.env');
+    const envFile = env.ENTRY_MONITOR_ENV_FILE || (fs.existsSync(defaultEnvFile) ? defaultEnvFile : '');
     const file = readEnvFile(envFile);
     const get = (name, fallback = '') => {
         if (env[name] !== undefined && env[name] !== '') return env[name];
