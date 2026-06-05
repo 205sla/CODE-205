@@ -48,6 +48,7 @@ Suggested status mapping:
 - Current probe results show no websocket open packet and no Socket.IO `welcome` event from `/cv/`; every tested type timed out.
 - The current result is consistent with the Entry realtime data type server being unavailable.
 - The probe supports Engine.IO `3` and `4`; EntryJS-era Socket.IO clients commonly need Engine.IO `3`, so production checks should keep that compatibility until the live protocol is verified.
+- Entry realtime lists can error when they have 15 or more items even if the realtime server is healthy. Routine monitoring must not classify that case as a server outage by itself.
 
 ## Additional tests needed
 
@@ -61,6 +62,7 @@ Suggested status mapping:
 - Decide log retention period and whether old records should be compacted daily.
 - Add a UI status page test after the backend monitor is implemented.
 - Add a guard that prevents manual refresh buttons from bypassing the 10-minute minimum interval.
+- Add a list-size guard if write/read validation is implemented: keep the monitor test list at 14 or fewer items and clean it up after each validation.
 
 ## Current reproduction command
 
