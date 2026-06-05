@@ -212,4 +212,54 @@ describe('entryCvMonitor status checks', () => {
         assert.equal(record.status, 'DOWN');
         assert.equal(record.loginStatus, 'authenticated');
     });
+
+    it('reports cloud server authorization failures without leaking project ids', async () => {
+        const fetchImpl = async (url) => {
+            if (url === 'https://playentry.org/ws/new') {
+                return new Response('<meta name="csrf-token" content="csrf-token">', {
+                    headers: { 'set-cookie': '_csrf=csrf-cookie; Path=/' },
+                });
+            }
+            if (url === 'https://playentry.org/graphql') {
+                return new Response(JSON.stringify({
+                    data: { cloudServerInfo: null },
+                    errors: [
+                        {
+                            statusCode: 403,
+                            extensions: {
+                                data: {
+                                    reason: 'not authorized',
+                                    id: 'abcdef0123456789abcdef01',
+                                },
+                            },
+                        },
+                    ],
+                }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            throw new Error(`Unexpected URL: ${url}`);
+        };
+
+        const record = await performStatusCheck({
+            projectId: 'abcdef0123456789abcdef01',
+            projectIdRedacted: 'abcdef...ef01',
+            engineIoVersion: '3',
+            type: '',
+            timeoutMs: 6000,
+        }, {
+            fetchImpl,
+            WebSocketImpl: undefined,
+            socketProbe: async () => {
+                throw new Error('socket probe should not run');
+            },
+        });
+
+        assert.equal(record.status, 'UNKNOWN');
+        assert.equal(record.loginStatus, 'anonymous');
+        assert.match(record.reason, /status=403/);
+        assert.match(record.reason, /reason=not authorized/);
+        assert.doesNotMatch(record.reason, /abcdef0123456789abcdef01/);
+    });
 });

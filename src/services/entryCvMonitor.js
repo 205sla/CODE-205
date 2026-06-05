@@ -195,11 +195,16 @@ function createCookieJar() {
 function safeGraphqlError(payload, fallback) {
     const first = Array.isArray(payload?.errors) ? payload.errors[0] : null;
     if (!first) return fallback;
+    const statusCode = first.statusCode || first.extensions?.statusCode || '';
+    const reason = first.extensions?.data?.reason || first.extensions?.reason || '';
     const code = first.extensions?.code || first.code || '';
     const message = first.message || '';
-    if (code && message) return `${fallback}: ${code} ${message}`;
-    if (code) return `${fallback}: ${code}`;
-    if (message) return `${fallback}: ${message}`;
+    const parts = [];
+    if (statusCode) parts.push(`status=${statusCode}`);
+    if (code) parts.push(`code=${code}`);
+    if (reason) parts.push(`reason=${reason}`);
+    if (message) parts.push(message);
+    if (parts.length) return `${fallback}: ${parts.join(' ')}`;
     return fallback;
 }
 
@@ -641,6 +646,7 @@ async function probeSocketWithNodeClient({ url, query, type, engineIoVersion, ti
 async function performStatusCheck(config, deps = {}) {
     const checkedAt = new Date().toISOString();
     const startedAt = Date.now();
+    let loginStatus = '';
     const fetchImpl = deps.fetchImpl || globalThis.fetch;
     const hasInjectedWebSocket = Object.prototype.hasOwnProperty.call(deps, 'WebSocketImpl');
     const WebSocketImpl = hasInjectedWebSocket ? deps.WebSocketImpl : globalThis.WebSocket;
@@ -671,6 +677,7 @@ async function performStatusCheck(config, deps = {}) {
 
     try {
         const entrySession = await createEntrySession(config, fetchImpl, config.timeoutMs);
+        loginStatus = entrySession.signedIn ? 'authenticated' : 'anonymous';
         const cloudServer = await fetchCloudServerInfo(config.projectId, fetchImpl, config.timeoutMs, entrySession);
         const socketResult = await socketProbe({
             url: cloudServer.url,
@@ -684,7 +691,7 @@ async function performStatusCheck(config, deps = {}) {
             status: socketResult.ok ? 'UP' : 'DOWN',
             ok: socketResult.ok,
             socketStatus: socketResult.socketStatus,
-            loginStatus: entrySession.signedIn ? 'authenticated' : 'anonymous',
+            loginStatus,
             reason: socketResult.reason,
             elapsedMs: socketResult.elapsedMs,
         };
@@ -692,6 +699,7 @@ async function performStatusCheck(config, deps = {}) {
         return {
             ...baseRecord,
             status: 'UNKNOWN',
+            loginStatus,
             reason: error.message || String(error),
             elapsedMs: Date.now() - startedAt,
         };
