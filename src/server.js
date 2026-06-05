@@ -3,9 +3,12 @@
 
 const createApp = require('./app');
 const { PORT } = require('./config');
+const { createEntryCvMonitor } = require('./services/entryCvMonitor');
 
-const app = createApp();
+const entryCvMonitor = createEntryCvMonitor();
+const app = createApp({ entryCvMonitor });
 
 app.listen(PORT, () => {
+    entryCvMonitor.start();
     console.log('Entry Editor running at http://localhost:' + PORT);
 });

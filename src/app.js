@@ -24,6 +24,7 @@ const spritesRouter = require('./routes/sprites');
 const exportRouter = require('./routes/export');
 const authRouter = require('./routes/auth');
 const meRouter = require('./routes/me');
+const createStatusRouter = require('./routes/status');
 const { errorHandler } = require('./routes/_respond');
 
 function defaultSessionStore() {
@@ -46,6 +47,7 @@ function createApp(opts = {}) {
 
     const app = express();
     app.set('trust proxy', 1);
+    app.locals.entryCvMonitor = opts.entryCvMonitor || null;
 
     if (opts.disableRateLimit) {
         app.set('disableRateLimit', true);
@@ -102,6 +104,9 @@ function createApp(opts = {}) {
     app.get('/merge', (req, res) => {
         res.sendFile(path.join(PUBLIC_DIR, 'merge.html'));
     });
+    app.get('/Status', (req, res) => {
+        res.sendFile(path.join(PUBLIC_DIR, 'status.html'));
+    });
 
     // 세션 (커스텀 store 주입 가능)
     app.use(session({
@@ -125,6 +130,7 @@ function createApp(opts = {}) {
     app.use('/api/export', exportRouter);
     app.use('/api/auth', authRouter);
     app.use('/api/me', meRouter);
+    app.use('/api/status', createStatusRouter());
 
     // 모든 라우터 뒤 — next(e) 또는 throw된 에러를 일괄 처리.
     // AuthError는 status 매핑, UNIQUE 제약은 409, 그 외는 500.
