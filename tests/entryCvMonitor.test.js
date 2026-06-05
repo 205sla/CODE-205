@@ -8,11 +8,13 @@ const fs = require('fs');
 
 const {
     MIN_INTERVAL_MS,
+    performStatusCheck,
     normalizeConfig,
     readEnvFile,
     redactId,
     readHistoryFile,
     writeHistoryFile,
+    _test,
 } = require('../src/services/entryCvMonitor');
 
 describe('entryCvMonitor config', () => {
@@ -21,8 +23,8 @@ describe('entryCvMonitor config', () => {
         const file = path.join(dir, 'monitor.env');
         fs.writeFileSync(file, [
             'ENTRY_MONITOR_ENABLED=true',
-            'ENTRY_MONITOR_PROJECT_ID=6a2254000216bc9b9a744a57',
-            'ENTRY_MONITOR_ID=entrycvmon205',
+            'ENTRY_MONITOR_PROJECT_ID=abcdef0123456789abcdef01',
+            'ENTRY_MONITOR_ID=test-monitor-user',
             "ENTRY_MONITOR_PASSWORD='secret-password'",
             'ENTRY_MONITOR_INTERVAL_MINUTES=1',
         ].join('\n'));
@@ -33,7 +35,7 @@ describe('entryCvMonitor config', () => {
         const config = normalizeConfig({ ENTRY_MONITOR_ENV_FILE: file });
         assert.equal(config.enabled, true);
         assert.equal(config.accountConfigured, true);
-        assert.equal(config.projectIdRedacted, '6a2254...4a57');
+        assert.equal(config.projectIdRedacted, 'abcdef...ef01');
         assert.equal(config.intervalMs, MIN_INTERVAL_MS);
         assert.equal(config.password, undefined);
         assert.equal(config.id, undefined);
@@ -42,7 +44,7 @@ describe('entryCvMonitor config', () => {
     });
 
     it('redacts ids before exposing monitor state', () => {
-        assert.equal(redactId('6a2254000216bc9b9a744a57'), '6a2254...4a57');
+        assert.equal(redactId('abcdef0123456789abcdef01'), 'abcdef...ef01');
         assert.equal(redactId('abc'), '<configured>');
         assert.equal(redactId(''), '');
     });
@@ -61,5 +63,76 @@ describe('entryCvMonitor history', () => {
         assert.deepEqual(readHistoryFile(file), history);
 
         fs.rmSync(dir, { recursive: true, force: true });
+    });
+});
+
+describe('entryCvMonitor socket helpers', () => {
+    it('encodes masked client frames and parses server text frames', () => {
+        const clientFrame = _test.encodeClientFrame(0x1, '40');
+        const decodedClientFrame = _test.readWebSocketFrame(clientFrame);
+        assert.equal(decodedClientFrame.opcode, 0x1);
+        assert.equal(decodedClientFrame.payload.toString('utf8'), '40');
+        assert.equal(decodedClientFrame.remaining.length, 0);
+
+        const payload = Buffer.from('42["welcome"]');
+        const serverFrame = Buffer.concat([Buffer.from([0x81, payload.length]), payload]);
+        const decodedServerFrame = _test.readWebSocketFrame(serverFrame);
+        assert.equal(decodedServerFrame.opcode, 0x1);
+        assert.equal(decodedServerFrame.payload.toString('utf8'), '42["welcome"]');
+        assert.equal(decodedServerFrame.remaining.length, 0);
+    });
+});
+
+describe('entryCvMonitor status checks', () => {
+    it('uses the Node socket probe path when global WebSocket is unavailable', async () => {
+        let socketProbeOptions;
+        const fetchImpl = async (url) => {
+            if (url === 'https://playentry.org/ws/new') {
+                return new Response('<meta name="csrf-token" content="csrf-token">', {
+                    headers: { 'set-cookie': '_csrf=csrf-cookie; Path=/' },
+                });
+            }
+            if (url === 'https://playentry.org/graphql') {
+                return new Response(JSON.stringify({
+                    data: {
+                        cloudServerInfo: {
+                            url: 'https://cloud.playentry.org',
+                            query: 'monitor-query',
+                        },
+                    },
+                }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                });
+            }
+            throw new Error(`Unexpected URL: ${url}`);
+        };
+
+        const record = await performStatusCheck({
+            projectId: 'abcdef0123456789abcdef01',
+            projectIdRedacted: 'abcdef...ef01',
+            engineIoVersion: '3',
+            type: '',
+            timeoutMs: 6000,
+        }, {
+            fetchImpl,
+            WebSocketImpl: undefined,
+            socketProbe: async (options) => {
+                socketProbeOptions = options;
+                return {
+                    ok: true,
+                    socketStatus: 'welcome',
+                    reason: 'welcome',
+                    elapsedMs: 12,
+                };
+            },
+        });
+
+        assert.equal(record.status, 'UP');
+        assert.equal(record.ok, true);
+        assert.equal(record.projectId, 'abcdef...ef01');
+        assert.equal(socketProbeOptions.url, 'https://cloud.playentry.org');
+        assert.equal(socketProbeOptions.query, 'monitor-query');
+        assert.equal(socketProbeOptions.engineIoVersion, '3');
     });
 });

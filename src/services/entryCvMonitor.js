@@ -1,8 +1,11 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
+const net = require('net');
 const os = require('os');
 const path = require('path');
+const tls = require('tls');
 
 const { ROOT_DIR } = require('../config');
 
@@ -139,6 +142,165 @@ function eventPacket(name, ...args) {
     return `42${JSON.stringify([name, ...args])}`;
 }
 
+function makeWebSocketAccept(key) {
+    return crypto.createHash('sha1')
+        .update(`${key}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+        .digest('base64');
+}
+
+function encodeClientFrame(opcode, payload = '') {
+    const payloadBuffer = Buffer.isBuffer(payload) ? payload : Buffer.from(String(payload));
+    const payloadLength = payloadBuffer.length;
+    let headerLength = 2;
+    if (payloadLength >= 126 && payloadLength <= 65535) headerLength = 4;
+    if (payloadLength > 65535) headerLength = 10;
+
+    const frame = Buffer.alloc(headerLength + 4 + payloadLength);
+    frame[0] = 0x80 | opcode;
+    if (payloadLength < 126) {
+        frame[1] = 0x80 | payloadLength;
+    } else if (payloadLength <= 65535) {
+        frame[1] = 0x80 | 126;
+        frame.writeUInt16BE(payloadLength, 2);
+    } else {
+        frame[1] = 0x80 | 127;
+        frame.writeUInt32BE(0, 2);
+        frame.writeUInt32BE(payloadLength, 6);
+    }
+
+    const mask = crypto.randomBytes(4);
+    mask.copy(frame, headerLength);
+    for (let index = 0; index < payloadLength; index += 1) {
+        frame[headerLength + 4 + index] = payloadBuffer[index] ^ mask[index % 4];
+    }
+    return frame;
+}
+
+function readWebSocketFrame(buffer) {
+    if (buffer.length < 2) return null;
+    const first = buffer[0];
+    const second = buffer[1];
+    const opcode = first & 0x0f;
+    const masked = Boolean(second & 0x80);
+    let payloadLength = second & 0x7f;
+    let offset = 2;
+
+    if (payloadLength === 126) {
+        if (buffer.length < offset + 2) return null;
+        payloadLength = buffer.readUInt16BE(offset);
+        offset += 2;
+    } else if (payloadLength === 127) {
+        if (buffer.length < offset + 8) return null;
+        const high = buffer.readUInt32BE(offset);
+        const low = buffer.readUInt32BE(offset + 4);
+        if (high > 0x1fffff) throw new Error('WebSocket frame is too large.');
+        payloadLength = high * 2 ** 32 + low;
+        offset += 8;
+    }
+
+    let mask;
+    if (masked) {
+        if (buffer.length < offset + 4) return null;
+        mask = buffer.subarray(offset, offset + 4);
+        offset += 4;
+    }
+
+    if (buffer.length < offset + payloadLength) return null;
+    const payload = Buffer.from(buffer.subarray(offset, offset + payloadLength));
+    if (mask) {
+        for (let index = 0; index < payload.length; index += 1) {
+            payload[index] ^= mask[index % 4];
+        }
+    }
+
+    return {
+        opcode,
+        payload,
+        remaining: buffer.subarray(offset + payloadLength),
+    };
+}
+
+function connectWebSocket(socketUrl, timeoutMs) {
+    const parsed = new URL(socketUrl);
+    const isSecure = parsed.protocol === 'wss:';
+    const port = Number(parsed.port || (isSecure ? 443 : 80));
+    const requestPath = `${parsed.pathname || '/'}${parsed.search || ''}`;
+    const key = crypto.randomBytes(16).toString('base64');
+    const expectedAccept = makeWebSocketAccept(key);
+
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        let buffer = Buffer.alloc(0);
+        let timer;
+        const socket = isSecure
+            ? tls.connect({ host: parsed.hostname, port, servername: parsed.hostname })
+            : net.connect({ host: parsed.hostname, port });
+
+        const fail = (error) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            socket.destroy();
+            reject(error);
+        };
+
+        timer = setTimeout(() => {
+            fail(new Error(`WebSocket handshake timed out after ${timeoutMs}ms.`));
+        }, timeoutMs);
+
+        socket.on(isSecure ? 'secureConnect' : 'connect', () => {
+            socket.write([
+                `GET ${requestPath} HTTP/1.1`,
+                `Host: ${parsed.host}`,
+                'Upgrade: websocket',
+                'Connection: Upgrade',
+                'Sec-WebSocket-Version: 13',
+                `Sec-WebSocket-Key: ${key}`,
+                'Origin: https://playentry.org',
+                '',
+                '',
+            ].join('\r\n'));
+        });
+
+        socket.on('data', (chunk) => {
+            if (settled) return;
+            buffer = Buffer.concat([buffer, chunk]);
+            const headerEnd = buffer.indexOf('\r\n\r\n');
+            if (headerEnd === -1) return;
+
+            const headerText = buffer.subarray(0, headerEnd).toString('utf8');
+            const lines = headerText.split(/\r\n/);
+            const statusLine = lines.shift() || '';
+            const headers = new Map();
+            for (const line of lines) {
+                const colon = line.indexOf(':');
+                if (colon === -1) continue;
+                headers.set(line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim());
+            }
+
+            if (!/^HTTP\/1\.[01] 101\b/.test(statusLine)) {
+                fail(new Error(`WebSocket handshake failed: ${statusLine || 'no status line'}.`));
+                return;
+            }
+            if (headers.get('sec-websocket-accept') !== expectedAccept) {
+                fail(new Error('WebSocket handshake failed: invalid accept key.'));
+                return;
+            }
+
+            settled = true;
+            clearTimeout(timer);
+            socket.removeAllListeners('data');
+            socket.removeAllListeners('error');
+            resolve({ socket, remaining: buffer.subarray(headerEnd + 4) });
+        });
+
+        socket.on('error', fail);
+        socket.on('close', () => {
+            fail(new Error('WebSocket handshake socket closed.'));
+        });
+    });
+}
+
 async function fetchWithTimeout(fetchImpl, url, options, timeoutMs) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -253,11 +415,118 @@ async function probeSocket({ url, query, type, engineIoVersion, timeoutMs, WebSo
     });
 }
 
+async function probeSocketWithNodeClient({ url, query, type, engineIoVersion, timeoutMs }) {
+    const startedAt = Date.now();
+    const socketUrl = makeSocketUrl(url, query, type, engineIoVersion);
+    let connection;
+
+    try {
+        connection = await connectWebSocket(socketUrl, timeoutMs);
+    } catch (error) {
+        return {
+            ok: false,
+            socketStatus: 'handshake-error',
+            reason: error.message || String(error),
+            elapsedMs: Date.now() - startedAt,
+        };
+    }
+
+    return await new Promise((resolve) => {
+        let done = false;
+        let frameBuffer = connection.remaining || Buffer.alloc(0);
+        const { socket } = connection;
+
+        const finish = (result) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            try { socket.write(encodeClientFrame(0x8)); } catch { /* noop */ }
+            socket.destroy();
+            resolve({
+                elapsedMs: Date.now() - startedAt,
+                ...result,
+            });
+        };
+
+        const sendText = (text) => {
+            socket.write(encodeClientFrame(0x1, text));
+        };
+
+        const handlePacket = (packet) => {
+            if (packet.startsWith('0')) {
+                sendText('40');
+                return;
+            }
+            if (packet === '2') {
+                sendText('3');
+                return;
+            }
+            if (packet.startsWith('44')) {
+                finish({ ok: false, socketStatus: 'socketio-error', reason: packet.slice(2) });
+                return;
+            }
+
+            const event = parseSocketIoEvent(packet);
+            if (!event) return;
+            if (event.name === 'check') {
+                sendText(eventPacket('imAlive', event.args[0]));
+            } else if (event.name === 'welcome') {
+                finish({ ok: true, socketStatus: 'welcome', reason: 'welcome' });
+            } else if (event.name === 'changeMode') {
+                finish({ ok: false, socketStatus: 'changeMode', reason: JSON.stringify(event.args) });
+            }
+        };
+
+        const processFrames = () => {
+            try {
+                while (!done) {
+                    const frame = readWebSocketFrame(frameBuffer);
+                    if (!frame) return;
+                    frameBuffer = frame.remaining;
+
+                    if (frame.opcode === 0x1 || frame.opcode === 0x0) {
+                        handlePacket(frame.payload.toString('utf8'));
+                    } else if (frame.opcode === 0x8) {
+                        finish({ ok: false, socketStatus: 'closed', reason: 'server sent close frame' });
+                    } else if (frame.opcode === 0x9) {
+                        socket.write(encodeClientFrame(0xA, frame.payload));
+                    }
+                }
+            } catch (error) {
+                finish({ ok: false, socketStatus: 'frame-error', reason: error.message || String(error) });
+            }
+        };
+
+        const timer = setTimeout(() => {
+            finish({ ok: false, socketStatus: 'timeout', reason: `No welcome before ${timeoutMs}ms.` });
+        }, timeoutMs);
+
+        socket.on('data', (chunk) => {
+            frameBuffer = Buffer.concat([frameBuffer, chunk]);
+            processFrames();
+        });
+
+        socket.on('error', (error) => {
+            finish({ ok: false, socketStatus: 'websocket-error', reason: error.message || 'WebSocket socket error.' });
+        });
+
+        socket.on('close', () => {
+            finish({ ok: false, socketStatus: 'closed', reason: 'socket closed' });
+        });
+
+        processFrames();
+    });
+}
+
 async function performStatusCheck(config, deps = {}) {
     const checkedAt = new Date().toISOString();
     const startedAt = Date.now();
     const fetchImpl = deps.fetchImpl || globalThis.fetch;
-    const WebSocketImpl = deps.WebSocketImpl || globalThis.WebSocket;
+    const hasInjectedWebSocket = Object.prototype.hasOwnProperty.call(deps, 'WebSocketImpl');
+    const WebSocketImpl = hasInjectedWebSocket ? deps.WebSocketImpl : globalThis.WebSocket;
+    const socketProbe = deps.socketProbe || (typeof WebSocketImpl === 'function'
+        ? (socketOptions) => probeSocket({ ...socketOptions, WebSocketImpl })
+        : probeSocketWithNodeClient);
 
     const baseRecord = {
         checkedAt,
@@ -279,19 +548,15 @@ async function performStatusCheck(config, deps = {}) {
     if (typeof fetchImpl !== 'function') {
         return { ...baseRecord, reason: 'fetch is not available in this Node runtime.' };
     }
-    if (typeof WebSocketImpl !== 'function') {
-        return { ...baseRecord, reason: 'WebSocket is not available in this Node runtime.' };
-    }
 
     try {
         const cloudServer = await fetchCloudServerInfo(config.projectId, fetchImpl, config.timeoutMs);
-        const socketResult = await probeSocket({
+        const socketResult = await socketProbe({
             url: cloudServer.url,
             query: cloudServer.query,
             type: config.type,
             engineIoVersion: config.engineIoVersion,
             timeoutMs: config.timeoutMs,
-            WebSocketImpl,
         });
         return {
             ...baseRecord,
@@ -332,6 +597,7 @@ function createEntryCvMonitor(options = {}) {
     const deps = {
         fetchImpl: options.fetchImpl,
         WebSocketImpl: options.WebSocketImpl,
+        socketProbe: options.socketProbe,
     };
     const now = options.now || (() => Date.now());
     const setTimer = options.setTimeout || setTimeout;
@@ -436,4 +702,10 @@ module.exports = {
     readHistoryFile,
     writeHistoryFile,
     redactId,
+    _test: {
+        encodeClientFrame,
+        readWebSocketFrame,
+        makeSocketUrl,
+        probeSocketWithNodeClient,
+    },
 };
