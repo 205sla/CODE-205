@@ -5,18 +5,18 @@ Created: `2026-06-05`
 
 ## Final monitoring policy
 
-The production monitor must test the Entry realtime variable/list server at a minimum interval of 10 minutes.
+The production monitor must test the Entry realtime variable/list server at a minimum interval of 1 hour.
 
 This feature is only a status monitor. It must not continuously poll, stress-test, fuzz, or load-test Entry servers.
 
 Planned constraints:
 
-- Run at most 1 realtime status check per monitored target every 10 minutes.
+- Run at most 1 realtime status check per monitored target every hour.
 - Do not run parallel websocket probes against the same target.
 - Use a short connection timeout, currently 6-8 seconds.
 - Store only redacted metadata; never store the `cloudServerInfo.query` token.
 - Record failed checks as normal status history, not as retry storms.
-- If the server is down, wait until the next 10-minute interval instead of immediate repeated retries.
+- If the server is down, wait until the next hourly interval instead of immediate repeated retries.
 - Show the latest status and history on `code.205.kr`, but keep the monitor itself lightweight.
 
 ## Suggested log fields
@@ -61,7 +61,7 @@ Suggested status mapping:
 - Decide whether the production monitor should check one known project only, or allow a configurable target list.
 - Decide log retention period and whether old records should be compacted daily.
 - Add a UI status page test after the backend monitor is implemented.
-- Add a guard that prevents manual refresh buttons from bypassing the 10-minute minimum interval.
+- Add a guard that prevents manual refresh buttons from bypassing the 1-hour minimum interval.
 - Add a list-size guard if write/read validation is implemented: keep the monitor test list at 14 or fewer items and clean it up after each validation.
 
 ## Current reproduction command

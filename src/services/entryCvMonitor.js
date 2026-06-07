@@ -9,7 +9,7 @@ const tls = require('tls');
 
 const { ROOT_DIR } = require('../config');
 
-const MIN_INTERVAL_MS = 10 * 60 * 1000;
+const MIN_INTERVAL_MS = 60 * 60 * 1000;
 const DEFAULT_TIMEOUT_MS = 6000;
 const DEFAULT_HISTORY_LIMIT = 144;
 
@@ -70,7 +70,7 @@ function normalizeConfig(env = process.env) {
         return fallback;
     };
 
-    const intervalMinutes = parsePositiveInt(get('ENTRY_MONITOR_INTERVAL_MINUTES', '10'), 10);
+    const intervalMinutes = parsePositiveInt(get('ENTRY_MONITOR_INTERVAL_MINUTES', '60'), 60);
     const intervalMs = Math.max(intervalMinutes * 60 * 1000, MIN_INTERVAL_MS);
     const timeoutMs = Math.min(
         Math.max(parsePositiveInt(get('ENTRY_MONITOR_TIMEOUT_MS', DEFAULT_TIMEOUT_MS), DEFAULT_TIMEOUT_MS), 1000),

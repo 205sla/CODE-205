@@ -32,7 +32,7 @@ before(async () => {
                     projectId: '6a2254...4a57',
                     accountConfigured: true,
                     nicknameConfigured: true,
-                    intervalMs: 600000,
+                    intervalMs: 3600000,
                     timeoutMs: 6000,
                     engineIoVersion: '3',
                     type: '',

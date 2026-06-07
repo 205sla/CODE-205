@@ -37,6 +37,7 @@ describe('entryCvMonitor config', () => {
         assert.equal(config.accountConfigured, true);
         assert.equal(config.projectIdRedacted, 'abcdef...ef01');
         assert.equal(config.intervalMs, MIN_INTERVAL_MS);
+        assert.equal(config.intervalMs, 60 * 60 * 1000);
         assert.equal(config.password, undefined);
         assert.equal(config.id, undefined);
 
