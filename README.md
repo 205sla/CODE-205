@@ -94,6 +94,8 @@ npm start
 - project 등록별 forming 방을 순서대로 채우고 정원이 차면 슬롯을 확정해 잠금
 - 잠긴 방 이탈 슬롯은 비워 두며, 초과 참가자는 새 forming 방으로 이동
 - `$` 변수·리스트 최신 상태를 메모리에 LWW로 머지하고 `patch`·`state` 메시지로 전달
+- 연결별 초당 30개 메시지 제한, heartbeat, 잠긴 방 동일 슬롯 단기 재접속
+- 작품별 연결·메시지·바이트 사용량을 일자별 SQLite 롤업으로 기록
 
 ### 정답 코드 자동 저장 + 복원 (회원)
 - 정답 통과(submit + allPass) 시 `Entry.exportProject` 결과(JSON, ≤100KB)를 `submissions` 테이블에 자동 저장 (문제당 최신 1개, 덮어쓰기)
@@ -155,7 +157,7 @@ CODE-205/
 │   ├── config.js                 # 환경변수·상수
 │   ├── db/
 │   │   ├── init.js               # better-sqlite3 싱글톤
-│   │   ├── schema.sql            # users / solutions / submissions / sync_projects
+│   │   ├── schema.sql            # users / solutions / submissions / sync_projects / sync_usage
 │   │   └── userScoped.js         # user_id FK 테이블 공용 헬퍼 (행 수·일괄 삭제)
 │   ├── routes/
 │   │   ├── _respond.js           # fail() + errorHandler 응답 헬퍼
@@ -167,8 +169,9 @@ CODE-205/
 │   │   ├── me.js                 # /api/me/{,solved,submissions,password}
 │   │   └── online.js             # /api/online/projects
 │   ├── realtime/
-│   │   ├── roomManager.js        # forming/locked 방 + LWW 상태
-│   │   └── wsServer.js           # /sync WebSocket upgrade + 등록 조회
+│   │   ├── roomManager.js        # forming/locked 방 + LWW 상태 + 동일 슬롯 resume
+│   │   ├── usageMeter.js         # 작품별 WS 사용량 배치 롤업
+│   │   └── wsServer.js           # /sync upgrade + 등록 조회 + rate/heartbeat
 │   ├── services/
 │   │   ├── problemService.js
 │   │   ├── spriteService.js
@@ -300,6 +303,7 @@ CODE-205/
 | 엔드포인트 | 설명 |
 |-----------|------|
 | `GET /api/online/projects` | 본인이 등록한 Entry 작품 목록 |
+| `GET /api/online/usage` | 작품별 누적 연결·메시지·바이트 사용량 |
 | `POST /api/online/projects` | 작품과 방 인원 등록. body: `{ entryProjectId, roomSize }` |
 | `DELETE /api/online/projects/:id` | 본인 작품 등록 해제 |
 

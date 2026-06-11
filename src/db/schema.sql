@@ -1,4 +1,4 @@
--- CODE 205 SQLite 스키마 (v4)
+-- CODE 205 SQLite 스키마 (v5)
 -- src/db/init.js가 첫 부트 때 멱등 적용한다 (CREATE TABLE IF NOT EXISTS).
 -- 컬럼 추가/제약 변경은 새 마이그레이션 단계로 분리 (단순 테이블 추가는 여기에).
 
@@ -62,6 +62,24 @@ CREATE TABLE IF NOT EXISTS sync_projects (
     token            TEXT    UNIQUE NOT NULL,
     created_at       INTEGER NOT NULL,
     UNIQUE (owner_user_id, entry_project_id),
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ─────── sync_usage (v5) ───────
+-- Entry Online 작품별 일자 사용량 롤업.
+-- WebSocket 핫패스에서는 메모리에 누적하고 usageMeter가 주기적으로 합쳐 쓴다.
+-- 등록을 삭제했다가 다시 추가해도 과거 사용량을 유지하도록 sync_projects가 아니라
+-- 사용자와 Entry 작품 ID를 기준으로 보관한다.
+CREATE TABLE IF NOT EXISTS sync_usage (
+    owner_user_id    INTEGER NOT NULL,
+    entry_project_id TEXT    NOT NULL,
+    day              TEXT    NOT NULL,
+    connections      INTEGER NOT NULL DEFAULT 0,
+    messages_in      INTEGER NOT NULL DEFAULT 0,
+    messages_out     INTEGER NOT NULL DEFAULT 0,
+    bytes_in         INTEGER NOT NULL DEFAULT 0,
+    bytes_out        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (owner_user_id, entry_project_id, day),
     FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 

@@ -30,7 +30,9 @@ CODE 205 운영 서버, 배포, 프로세스 관리, DB, 예약 작업, 상태 �
 ## Entry Online WebSocket
 
 Node HTTP 서버가 Express와 `/sync` WebSocket Upgrade를 함께 처리한다.
-운영 Nginx에는 다음과 같은 Upgrade 프록시가 필요하다.
+2026-06-11 확인한 운영 Nginx는 공통 `location /`에서 Upgrade 헤더를 전달하고
+`proxy_read_timeout 300s`를 사용한다. 별도 `/sync` location을 둘 경우에는
+다음과 같은 설정이 필요하다.
 
 ```nginx
 location /sync {
@@ -39,7 +41,7 @@ location /sync {
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
     proxy_set_header Host $host;
-    proxy_read_timeout 75s;
+    proxy_read_timeout 300s;
 }
 ```
 
@@ -48,6 +50,10 @@ location /sync {
 
 배포 후에는 HTTP 상태와 별도로 `wss://code.205.kr/sync`에 연결해 `join`
 메시지에 `roster` 또는 `slot` 응답이 오는지 확인한다.
+
+Entry Online 사용량은 `sync_usage`에 작품·일자별로 저장된다. 애플리케이션
+메시지는 메모리에 누적한 뒤 10초마다 배치 반영되므로 장애 직전 최대 한 주기의
+수치는 유실될 수 있다. 조회는 로그인 후 `GET /api/online/usage`를 사용한다.
 
 ## 새 운영 문서 작성 규칙
 

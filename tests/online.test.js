@@ -16,6 +16,7 @@ const createApp = require('../src/app');
 const { getDb, closeDb } = require('../src/db/init');
 const onlineProjectService = require('../src/services/onlineProjectService');
 const { createRoomManager } = require('../src/realtime/roomManager');
+const { createUsageMeter } = require('../src/realtime/usageMeter');
 const { attachWsServer } = require('../src/realtime/wsServer');
 
 function fakeClient() {
@@ -111,6 +112,34 @@ describe('roomManager', () => {
         assert.equal(manager.getSnapshot().length, 1);
         manager.leave(b);
         assert.equal(manager.getSnapshot().length, 0);
+    });
+
+    it('비정상 단절은 짧은 유예 동안 같은 잠긴 방과 슬롯으로 복귀시킨다', () => {
+        let nextToken = 0;
+        const manager = createRoomManager({
+            idFactory: () => 'room-1',
+            resumeTokenFactory: () => 'resume-' + (++nextToken),
+            resumeGraceMs: 1000,
+        });
+        const a = fakeClient();
+        const b = fakeClient();
+        const resumed = fakeClient();
+        manager.join(a, project());
+        manager.join(b, project());
+
+        const slot = a.messages.find((message) => message.type === 'slot');
+        manager.leave(a, { allowResume: true });
+        assert.equal(manager.getSnapshot()[0].reserved, 1);
+
+        const result = manager.resume(resumed, project(), slot.resumeToken);
+        assert.equal(result.resumed, true);
+        assert.equal(result.slot, 1);
+        assert.equal(result.roomId, slot.roomId);
+        assert.equal(
+            resumed.messages.find((message) => message.type === 'slot').slot,
+            1
+        );
+        assert.equal(manager.getSnapshot()[0].reserved, 0);
     });
 
     it('변수와 리스트를 LWW로 머지하고 resync에 최신 전체 상태를 보낸다', () => {
@@ -217,6 +246,43 @@ describe('onlineProjectService', () => {
             }, { db }),
             (error) => error.code === 'PROJECT_LIMIT' && error.status === 409
         );
+    });
+
+    it('작품별 연결, 메시지, 바이트 사용량을 합산한다', () => {
+        const db = memoryDbWithUser();
+        const created = onlineProjectService.createProject(1, {
+            entryProjectId: '555555555555555555555555',
+            roomSize: 2,
+        }, { db });
+        const registered = onlineProjectService.findByOwner(
+            created.entryProjectId,
+            'owner',
+            { db }
+        );
+        const meter = createUsageMeter({
+            db,
+            flushIntervalMs: 0,
+            now: () => Date.UTC(2026, 5, 11),
+        });
+
+        meter.recordConnection(registered);
+        meter.recordInbound(registered, 120);
+        meter.recordInbound(registered, 30);
+        meter.recordOutbound(registered, 250);
+        assert.equal(meter.flush(), 1);
+
+        assert.deepEqual(onlineProjectService.listUsage(1, { db }), [{
+            entryProjectId: created.entryProjectId,
+            connections: 1,
+            messagesIn: 2,
+            messagesOut: 1,
+            bytesIn: 150,
+            bytesOut: 250,
+            totalMessages: 3,
+            totalBytes: 400,
+            firstDay: '2026-06-11',
+            lastDay: '2026-06-11',
+        }]);
     });
 });
 
@@ -463,6 +529,46 @@ describe('Entry Online HTTP + WebSocket integration', () => {
         for (const client of [...firstPair, ...secondPair]) client.socket.close();
     });
 
+    it('비정상 단절 클라이언트가 기존 방과 슬롯으로 재접속한다', async () => {
+        const account = await signup('resumeowner');
+        const created = await call('POST', '/api/online/projects', {
+            entryProjectId: 'abababababababababababab',
+            roomSize: 2,
+        }, account.cookie);
+        const credentials = {
+            type: 'join',
+            projectId: created.body.project.entryProjectId,
+            ownerId: 'resumeowner',
+        };
+        const a = connectClient(credentials);
+        const b = connectClient(credentials);
+        await Promise.all([a.ready, b.ready]);
+        const [slotA, slotB] = await Promise.all([
+            a.waitFor((message) => message.type === 'slot'),
+            b.waitFor((message) => message.type === 'slot'),
+        ]);
+
+        a.socket.terminate();
+        await b.waitFor(
+            (message) => message.type === 'roster' && message.connected === 1
+        );
+        const resumed = connectClient({
+            ...credentials,
+            resumeToken: slotA.resumeToken,
+        });
+        await resumed.ready;
+        const resumedSlot = await resumed.waitFor(
+            (message) => message.type === 'slot'
+        );
+
+        assert.equal(resumedSlot.resumed, true);
+        assert.equal(resumedSlot.roomId, slotA.roomId);
+        assert.equal(resumedSlot.slot, slotA.slot);
+        assert.notEqual(resumedSlot.slot, slotB.slot);
+        b.socket.close();
+        resumed.socket.close();
+    });
+
     it('등록되지 않은 CODE 205 ID 연결을 거부한다', async () => {
         const bad = connectClient({
             type: 'join',
@@ -473,5 +579,139 @@ describe('Entry Online HTTP + WebSocket integration', () => {
         const error = await bad.waitFor((message) => message.type === 'error');
         assert.equal(error.code, 'REGISTRATION_NOT_FOUND');
         bad.socket.close();
+    });
+
+    it('작품 소유자가 누적 WebSocket 사용량을 조회한다', async () => {
+        const account = await signup('usageowner');
+        const created = await call('POST', '/api/online/projects', {
+            entryProjectId: '121212121212121212121212',
+            roomSize: 2,
+        }, account.cookie);
+        const client = connectClient({
+            type: 'join',
+            projectId: created.body.project.entryProjectId,
+            ownerId: 'usageowner',
+        });
+        await client.ready;
+        await client.waitFor((message) => message.type === 'roster');
+        client.socket.send(JSON.stringify({ type: 'ping' }));
+        await client.waitFor((message) => message.type === 'pong');
+        wsLayer.usageMeter.flush();
+
+        const response = await call(
+            'GET',
+            '/api/online/usage',
+            undefined,
+            account.cookie
+        );
+        assert.equal(response.status, 200);
+        assert.equal(response.body.usage.length, 1);
+        assert.equal(response.body.usage[0].connections, 1);
+        assert.ok(response.body.usage[0].messagesIn >= 2);
+        assert.ok(response.body.usage[0].messagesOut >= 2);
+        assert.ok(response.body.usage[0].totalBytes > 0);
+        client.socket.close();
+    });
+});
+
+describe('Entry Online WebSocket hardening', () => {
+    function meterStub() {
+        return {
+            recordConnection() {},
+            recordInbound() {},
+            recordOutbound() {},
+            flush() {},
+            close() {},
+        };
+    }
+
+    async function startLayer(options) {
+        const server = http.createServer();
+        const layer = attachWsServer(server, {
+            usageMeter: meterStub(),
+            heartbeatIntervalMs: 0,
+            ...options,
+        });
+        await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const url = 'ws://127.0.0.1:' + server.address().port + '/sync';
+        return {
+            server,
+            layer,
+            url,
+            async close() {
+                await new Promise((resolve) => layer.close(resolve));
+                await new Promise((resolve) => server.close(resolve));
+            },
+        };
+    }
+
+    function waitForMessage(socket, predicate, timeoutMs = 2000) {
+        return new Promise((resolve, reject) => {
+            const timer = setTimeout(
+                () => reject(new Error('Timed out waiting for message.')),
+                timeoutMs
+            );
+            socket.on('message', (raw) => {
+                const message = JSON.parse(raw.toString());
+                if (!predicate(message)) return;
+                clearTimeout(timer);
+                resolve(message);
+            });
+        });
+    }
+
+    it('연결별 메시지 빈도 초과를 오류로 닫는다', async () => {
+        const running = await startLayer({
+            messageRateLimit: 2,
+            findByOwner: () => ({
+                id: 1,
+                owner_user_id: 1,
+                entry_project_id: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+                room_size: 2,
+            }),
+        });
+        const socket = new WebSocket(running.url);
+        await new Promise((resolve) => socket.once('open', resolve));
+        socket.send(JSON.stringify({
+            type: 'join',
+            projectId: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+            ownerId: 'owner',
+        }));
+        await waitForMessage(socket, (message) => message.type === 'roster');
+        socket.send(JSON.stringify({ type: 'ping' }));
+        await waitForMessage(socket, (message) => message.type === 'pong');
+        const limited = waitForMessage(
+            socket,
+            (message) => message.code === 'RATE_LIMITED'
+        );
+        socket.send(JSON.stringify({ type: 'ping' }));
+        assert.equal((await limited).code, 'RATE_LIMITED');
+        socket.close();
+        await running.close();
+    });
+
+    it('등록 조회 예외를 연결 내부 오류로 격리한다', async () => {
+        const errors = [];
+        const running = await startLayer({
+            findByOwner: () => {
+                throw new Error('database unavailable');
+            },
+            onError: (error) => errors.push(error.message),
+        });
+        const socket = new WebSocket(running.url);
+        await new Promise((resolve) => socket.once('open', resolve));
+        const internal = waitForMessage(
+            socket,
+            (message) => message.code === 'INTERNAL'
+        );
+        socket.send(JSON.stringify({
+            type: 'join',
+            projectId: 'aaaaaaaaaaaaaaaaaaaaaaaa',
+            ownerId: 'owner',
+        }));
+        assert.equal((await internal).code, 'INTERNAL');
+        assert.deepEqual(errors, ['database unavailable']);
+        socket.close();
+        await running.close();
     });
 });

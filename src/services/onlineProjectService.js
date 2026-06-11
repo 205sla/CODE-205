@@ -141,11 +141,52 @@ function deleteProject(ownerUserId, id, opts = {}) {
     return info.changes > 0;
 }
 
+function listUsage(ownerUserId, opts = {}) {
+    const db = opts.db || getDb();
+    return db.prepare(`
+        WITH project_ids AS (
+            SELECT entry_project_id
+            FROM sync_projects
+            WHERE owner_user_id = ?
+            UNION
+            SELECT entry_project_id
+            FROM sync_usage
+            WHERE owner_user_id = ?
+        )
+        SELECT ids.entry_project_id,
+               COALESCE(SUM(u.connections), 0) AS connections,
+               COALESCE(SUM(u.messages_in), 0) AS messages_in,
+               COALESCE(SUM(u.messages_out), 0) AS messages_out,
+               COALESCE(SUM(u.bytes_in), 0) AS bytes_in,
+               COALESCE(SUM(u.bytes_out), 0) AS bytes_out,
+               MIN(u.day) AS first_day,
+               MAX(u.day) AS last_day
+        FROM project_ids ids
+        LEFT JOIN sync_usage u
+          ON u.owner_user_id = ?
+         AND u.entry_project_id = ids.entry_project_id
+        GROUP BY ids.entry_project_id
+        ORDER BY ids.entry_project_id
+    `).all(ownerUserId, ownerUserId, ownerUserId).map((row) => ({
+        entryProjectId: row.entry_project_id,
+        connections: row.connections,
+        messagesIn: row.messages_in,
+        messagesOut: row.messages_out,
+        bytesIn: row.bytes_in,
+        bytesOut: row.bytes_out,
+        totalMessages: row.messages_in + row.messages_out,
+        totalBytes: row.bytes_in + row.bytes_out,
+        firstDay: row.first_day,
+        lastDay: row.last_day,
+    }));
+}
+
 function findByOwner(entryProjectId, ownerId, opts = {}) {
     const normalizedId = normalizeProjectId(entryProjectId);
     const normalizedOwnerId = normalizeOwnerId(ownerId);
+    const ownerValidationError = authService.validateUsername(normalizedOwnerId);
     if (!PROJECT_ID_RE.test(normalizedId)
-        || authService.validateUsername(normalizedOwnerId)) {
+        || ownerValidationError !== null) {
         return null;
     }
     const db = opts.db || getDb();
@@ -170,5 +211,6 @@ module.exports = {
     listProjects,
     createProject,
     deleteProject,
+    listUsage,
     findByOwner,
 };

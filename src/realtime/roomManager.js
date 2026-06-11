@@ -2,6 +2,8 @@
 
 const crypto = require('crypto');
 
+const DEFAULT_RESUME_GRACE_MS = 15 * 1000;
+
 const LOCAL_VARIABLE_NAMES = new Set([
     '$확장프로그램',
     '$유저번호',
@@ -60,15 +62,23 @@ function sanitizeLists(items) {
 
 function createRoomManager(options = {}) {
     const idFactory = options.idFactory || (() => crypto.randomUUID());
+    const resumeTokenFactory = options.resumeTokenFactory
+        || (() => crypto.randomBytes(24).toString('base64url'));
+    const resumeGraceMs = options.resumeGraceMs ?? DEFAULT_RESUME_GRACE_MS;
+    const now = options.now || Date.now;
+    const onSend = options.onSend || (() => {});
     const rooms = new Map();
     const pools = new Map();
     const sessions = new Map();
+    const resumeReservations = new Map();
 
     function send(client, payload) {
         try {
             if (typeof client.send !== 'function') return false;
             if (typeof client.readyState === 'number' && client.readyState !== 1) return false;
-            client.send(JSON.stringify(payload));
+            const encoded = JSON.stringify(payload);
+            client.send(encoded);
+            onSend(client, Buffer.byteLength(encoded), payload);
             return true;
         } catch (_) {
             return false;
@@ -158,11 +168,13 @@ function createRoomManager(options = {}) {
         let slot = 1;
         for (const [client, member] of room.members) {
             member.slot = slot;
+            member.resumeToken = resumeTokenFactory();
             send(client, {
                 type: 'slot',
                 roomId: room.id,
                 slot,
                 roomSize: room.roomSize,
+                resumeToken: member.resumeToken,
             });
             send(client, statePayload(room));
             slot += 1;
@@ -178,7 +190,7 @@ function createRoomManager(options = {}) {
 
         const pool = getPool(project);
         const room = pool.forming || createRoom(pool, project.roomSize);
-        const member = { slot: null };
+        const member = { slot: null, resumeToken: null };
         room.members.set(client, member);
         sessions.set(client, { room, member });
 
@@ -188,6 +200,50 @@ function createRoomManager(options = {}) {
             broadcastRoster(room);
         }
         return { roomId: room.id, state: room.state, slot: member.slot };
+    }
+
+    function resume(client, project, token) {
+        if (sessions.has(client) || typeof token !== 'string' || !token) {
+            return null;
+        }
+        const reservation = resumeReservations.get(token);
+        if (!reservation) return null;
+        if (reservation.expiresAt <= now()) {
+            clearTimeout(reservation.timer);
+            resumeReservations.delete(token);
+            if (reservation.room.members.size === 0
+                && !roomHasReservations(reservation.room)) {
+                destroyRoom(reservation.room);
+            }
+            return null;
+        }
+        if (reservation.room.pool.key !== String(project.registrationId)) {
+            return null;
+        }
+
+        clearTimeout(reservation.timer);
+        resumeReservations.delete(token);
+        reservation.room.members.set(client, reservation.member);
+        sessions.set(client, {
+            room: reservation.room,
+            member: reservation.member,
+        });
+        send(client, {
+            type: 'slot',
+            roomId: reservation.room.id,
+            slot: reservation.member.slot,
+            roomSize: reservation.room.roomSize,
+            resumeToken: reservation.member.resumeToken,
+            resumed: true,
+        });
+        send(client, statePayload(reservation.room));
+        broadcastRoster(reservation.room);
+        return {
+            roomId: reservation.room.id,
+            state: reservation.room.state,
+            slot: reservation.member.slot,
+            resumed: true,
+        };
     }
 
     function mergePatch(room, message) {
@@ -253,20 +309,56 @@ function createRoomManager(options = {}) {
     }
 
     function destroyRoom(room) {
+        for (const [token, reservation] of resumeReservations) {
+            if (reservation.room !== room) continue;
+            clearTimeout(reservation.timer);
+            resumeReservations.delete(token);
+        }
         rooms.delete(room.id);
         room.pool.rooms.delete(room);
         if (room.pool.forming === room) room.pool.forming = null;
         if (room.pool.rooms.size === 0) pools.delete(room.pool.key);
     }
 
-    function leave(client) {
+    function roomHasReservations(room) {
+        for (const reservation of resumeReservations.values()) {
+            if (reservation.room === room) return true;
+        }
+        return false;
+    }
+
+    function reserveForResume(room, member) {
+        if (resumeGraceMs <= 0 || !member.resumeToken) return false;
+        const token = member.resumeToken;
+        const reservation = {
+            room,
+            member,
+            expiresAt: now() + resumeGraceMs,
+            timer: null,
+        };
+        reservation.timer = setTimeout(() => {
+            if (resumeReservations.get(token) !== reservation) return;
+            resumeReservations.delete(token);
+            if (room.members.size === 0 && !roomHasReservations(room)) {
+                destroyRoom(room);
+            }
+        }, resumeGraceMs);
+        reservation.timer.unref?.();
+        resumeReservations.set(token, reservation);
+        return true;
+    }
+
+    function leave(client, leaveOptions = {}) {
         const session = sessions.get(client);
         if (!session) return false;
         sessions.delete(client);
 
-        const { room } = session;
+        const { room, member } = session;
         room.members.delete(client);
-        if (room.members.size === 0) {
+        const reserved = leaveOptions.allowResume === true
+            && room.state === 'locked'
+            && reserveForResume(room, member);
+        if (room.members.size === 0 && !reserved && !roomHasReservations(room)) {
             destroyRoom(room);
         } else {
             broadcastRoster(room);
@@ -282,6 +374,8 @@ function createRoomManager(options = {}) {
             state: room.state,
             roomSize: room.roomSize,
             connected: room.members.size,
+            reserved: [...resumeReservations.values()]
+                .filter((reservation) => reservation.room === room).length,
             slots: [...room.members.values()].map((member) => member.slot),
             vars: [...room.sharedState.vars.values()],
             lists: [...room.sharedState.lists.values()],
@@ -290,6 +384,7 @@ function createRoomManager(options = {}) {
 
     return {
         join,
+        resume,
         handleMessage,
         leave,
         getSnapshot,
@@ -297,6 +392,7 @@ function createRoomManager(options = {}) {
 }
 
 module.exports = {
+    DEFAULT_RESUME_GRACE_MS,
     LOCAL_VARIABLE_NAMES,
     createRoomManager,
     sanitizeVariables,
