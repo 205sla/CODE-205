@@ -4,12 +4,15 @@
 const http = require('http');
 const createApp = require('./app');
 const { PORT } = require('./config');
+const { createEntryCvMonitor } = require('./services/entryCvMonitor');
 const { attachWsServer } = require('./realtime/wsServer');
 
-const app = createApp();
+const entryCvMonitor = createEntryCvMonitor();
+const app = createApp({ entryCvMonitor });
 const server = http.createServer(app);
 attachWsServer(server);
 
 server.listen(PORT, () => {
+    entryCvMonitor.start();
     console.log('Entry Editor running at http://localhost:' + PORT);
 });

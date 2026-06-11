@@ -230,6 +230,17 @@ CODE-205/
     └── merge.test.js          # 작품 합치기 엔진·라우트
 ```
 
+## 프로젝트 지식
+
+프로젝트 전용 구현/운영 지식은 [`지식/`](지식/README.md)에 정리합니다.
+
+- EntryJS API와 `.ent` 포맷 참고: [`지식/entry-reference/`](지식/entry-reference/README.md)
+- 기능별 설계와 구현 메모: [`지식/기능/`](지식/기능/README.md)
+- 운영 서버, PM2, DB, 장애 대응: [`지식/운영/`](지식/운영/README.md)
+- 문제 제작 내부 메모: [`지식/문제제작/`](지식/문제제작/README.md)
+
+공개 기여자 문서인 `PROBLEM_GUIDE.md`와 라이선스/상표 안내인 `NOTICE.md`는 외부 링크 보존을 위해 루트에 둡니다.
+
 ## 문제 추가
 
 `PROBLEM_GUIDE.md`에 상세한 출제 가이드라인이 있습니다.

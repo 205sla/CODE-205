@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>엔트리 서버 상태 · CODE 205</title>
+    <meta name="description" content="CODE 205에서 확인하는 엔트리 실시간 변수/리스트 서버 상태입니다.">
+    <meta name="theme-color" content="#2c313d">
+    <meta name="robots" content="noindex, follow">
+    <link rel="canonical" href="https://code.205.kr/Status">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link href="/css/common.css" rel="stylesheet">
+    <link href="/css/status.css" rel="stylesheet">
+</head>
+<body class="status-body">
+    <header>
+        <a href="/" class="back-link">메인</a>
+        <span class="header-title">CODE 205 <span class="beta-badge">BETA</span></span>
+    </header>
+
+    <main class="status-page">
+        <section class="status-summary" aria-live="polite">
+            <div class="status-title-block">
+                <p class="status-kicker">Entry Realtime</p>
+                <h1>엔트리 실시간 변수/리스트 서버</h1>
+                <p class="status-message" id="status-message">상태를 불러오는 중입니다.</p>
+            </div>
+            <div class="status-badge status-unknown" id="status-badge">확인 중</div>
+        </section>
+
+        <section class="status-metrics" aria-label="상태 요약">
+            <div class="metric">
+                <span class="metric-label">마지막 확인</span>
+                <strong id="metric-checked">-</strong>
+            </div>
+            <div class="metric">
+                <span class="metric-label">다음 확인</span>
+                <strong id="metric-next">-</strong>
+            </div>
+            <div class="metric">
+                <span class="metric-label">확인 주기</span>
+                <strong id="metric-interval">-</strong>
+            </div>
+            <div class="metric">
+                <span class="metric-label">테스트 작품</span>
+                <strong id="metric-project">-</strong>
+            </div>
+        </section>
+
+        <section class="status-detail">
+            <div class="detail-header">
+                <h2>최근 기록</h2>
+                <button class="reload-button" type="button" id="reload-button">새로고침</button>
+            </div>
+            <div class="history-wrap">
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th scope="col">시각</th>
+                            <th scope="col">상태</th>
+                            <th scope="col">응답</th>
+                            <th scope="col">사유</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body">
+                        <tr>
+                            <td colspan="4" class="empty-row">기록을 불러오는 중입니다.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="/js/dom-escape.js"></script>
+    <script src="/js/api.js"></script>
+    <script src="/js/common-header.js"></script>
+    <script src="/js/status.js"></script>
+    <script src="/js/common-footer.js"></script>
+</body>
+</html>
