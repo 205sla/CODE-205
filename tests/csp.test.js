@@ -53,6 +53,7 @@ describe('정적 페이지 strict CSP', () => {
         '/login.html',
         '/signup.html',
         '/profile.html',
+        '/online',
     ];
     STRICT_PAGES.forEach((p) => {
         it(p + ' → CSP 헤더 + strict 정책', async () => {

@@ -16,12 +16,27 @@ const SCHEMA_SQL = fs.readFileSync(
 
 // schema.sql이 표현하는 baseline 버전 — 새 DB 부트 시 schema_version에 1행만 INSERT.
 // schema.sql 변경 시 함께 올리고, 그 변경에 대응하는 ALTER는 MIGRATIONS에도 추가.
-const BASELINE_VERSION = 3;
+const BASELINE_VERSION = 4;
 
-// 점진적 스키마 변경 정의. 신규 DB는 schema.sql이 baseline까지 처리하므로
-// version > BASELINE_VERSION인 항목만 의미가 있다.
-// 예: { version: 4, sql: 'ALTER TABLE users ADD COLUMN avatar_url TEXT;' }
-const MIGRATIONS = [];
+// 점진적 스키마 변경 정의. 신규 DB는 schema.sql 적용 후 BASELINE_VERSION으로
+// 시작하므로 아래 항목을 건너뛴다. 기존 DB만 현재 버전 이후 항목을 순서대로 적용.
+const MIGRATIONS = [
+    {
+        version: 4,
+        sql: `
+            CREATE TABLE IF NOT EXISTS sync_projects (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                owner_user_id    INTEGER NOT NULL,
+                entry_project_id TEXT    NOT NULL,
+                room_size        INTEGER NOT NULL CHECK (room_size BETWEEN 2 AND 8),
+                token            TEXT    UNIQUE NOT NULL,
+                created_at       INTEGER NOT NULL,
+                UNIQUE (owner_user_id, entry_project_id),
+                FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+        `,
+    },
+];
 
 function nowSec() {
     return Math.floor(Date.now() / 1000);

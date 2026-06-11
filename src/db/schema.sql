@@ -1,4 +1,4 @@
--- CODE 205 SQLite 스키마 (v3)
+-- CODE 205 SQLite 스키마 (v4)
 -- src/db/init.js가 첫 부트 때 멱등 적용한다 (CREATE TABLE IF NOT EXISTS).
 -- 컬럼 추가/제약 변경은 새 마이그레이션 단계로 분리 (단순 테이블 추가는 여기에).
 
@@ -48,6 +48,21 @@ CREATE TABLE IF NOT EXISTS submissions (
     submitted_at INTEGER NOT NULL,
     PRIMARY KEY (user_id, problem_id),
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ─────── sync_projects (v4) ───────
+-- Entry Online에 연결할 작품 등록.
+-- 같은 Entry 작품은 여러 CODE 205 사용자가 각각 등록할 수 있지만,
+-- 한 사용자는 같은 작품을 중복 등록할 수 없다.
+CREATE TABLE IF NOT EXISTS sync_projects (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    owner_user_id    INTEGER NOT NULL,
+    entry_project_id TEXT    NOT NULL,
+    room_size        INTEGER NOT NULL CHECK (room_size BETWEEN 2 AND 8),
+    token            TEXT    UNIQUE NOT NULL,
+    created_at       INTEGER NOT NULL,
+    UNIQUE (owner_user_id, entry_project_id),
+    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 -- ─────── schema_version ───────

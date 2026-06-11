@@ -62,6 +62,7 @@ npm start
 ### 정적 페이지
 - `/contribute.html` — 문제 기여 가이드
 - `/merge` — 엔트리 작품(.ent) 합치기 도구 (클라이언트 사이드)
+- `/online` — Entry Online 작품 등록·방 인원 설정 페이지
 - `/privacy.html` — 개인정보 처리방침 (회원 데이터 수집·보유·삭제 정책)
 - `/terms.html` — 이용약관
 
@@ -86,6 +87,13 @@ npm start
 - 정답 통과 시 problem_id가 서버 `solutions` 테이블에 자동 등록
 - 페이지 로드 시 localStorage(`entry:solved`) ↔ 서버 양방향 자동 병합
 - 비회원은 기존대로 localStorage만 사용 (강제 로그인 X)
+
+### Entry Online 작품 등록·WebSocket 동기화
+- 로그인 사용자가 Entry 작품 ID를 계정당 최대 3개 등록하고 작품별 방 인원(2~8명)을 설정
+- 작품별 방 인원 등록·삭제, `/sync` 첫 `join`의 Entry 작품 ID와 CODE 205 ID로 등록 조회
+- project 등록별 forming 방을 순서대로 채우고 정원이 차면 슬롯을 확정해 잠금
+- 잠긴 방 이탈 슬롯은 비워 두며, 초과 참가자는 새 forming 방으로 이동
+- `$` 변수·리스트 최신 상태를 메모리에 LWW로 머지하고 `patch`·`state` 메시지로 전달
 
 ### 정답 코드 자동 저장 + 복원 (회원)
 - 정답 통과(submit + allPass) 시 `Entry.exportProject` 결과(JSON, ≤100KB)를 `submissions` 테이블에 자동 저장 (문제당 최신 1개, 덮어쓰기)
@@ -142,12 +150,12 @@ npm start
 ```
 CODE-205/
 ├── src/                          # 백엔드 (모듈 분리)
-│   ├── server.js                 # 진입점 (createApp + listen)
+│   ├── server.js                 # 진입점 (HTTP server + Express + WebSocket)
 │   ├── app.js                    # Express 앱 팩토리
 │   ├── config.js                 # 환경변수·상수
 │   ├── db/
 │   │   ├── init.js               # better-sqlite3 싱글톤
-│   │   ├── schema.sql            # users / solutions / submissions / schema_version
+│   │   ├── schema.sql            # users / solutions / submissions / sync_projects
 │   │   └── userScoped.js         # user_id FK 테이블 공용 헬퍼 (행 수·일괄 삭제)
 │   ├── routes/
 │   │   ├── _respond.js           # fail() + errorHandler 응답 헬퍼
@@ -156,7 +164,11 @@ CODE-205/
 │   │   ├── sprites.js            # /api/sprites
 │   │   ├── export.js             # /api/export
 │   │   ├── auth.js               # /api/auth/{signup,login,logout,me}
-│   │   └── me.js                 # /api/me/{,solved,submissions,password}
+│   │   ├── me.js                 # /api/me/{,solved,submissions,password}
+│   │   └── online.js             # /api/online/projects
+│   ├── realtime/
+│   │   ├── roomManager.js        # forming/locked 방 + LWW 상태
+│   │   └── wsServer.js           # /sync WebSocket upgrade + 등록 조회
 │   ├── services/
 │   │   ├── problemService.js
 │   │   ├── spriteService.js
@@ -208,7 +220,7 @@ CODE-205/
 │   └── lib/                      # Entry 라이브러리 (로컬 번들, ~64MB)
 ├── db/                           # 런타임 SQLite 파일 (gitignored)
 ├── logs/                         # PM2 출력 로그 (gitignored, pm2-logrotate로 회전)
-└── tests/                        # node:test 단위·통합 테스트 (224개)
+└── tests/                        # node:test 단위·통합 테스트 (247개)
     ├── format.test.js / lists.test.js / markdown.test.js / evaluate.test.js
     ├── userService.test.js / authService.test.js / auth.routes.test.js
     ├── solutionService.test.js / submissionService.test.js
@@ -273,6 +285,17 @@ CODE-205/
 | `DELETE /api/me/submissions/:id` | 단건 제거 |
 | `DELETE /api/me/submissions` | **전체 일괄 삭제** |
 
+### Entry Online (`/api/online/*`, requireAuth)
+| 엔드포인트 | 설명 |
+|-----------|------|
+| `GET /api/online/projects` | 본인이 등록한 Entry 작품 목록 |
+| `POST /api/online/projects` | 작품과 방 인원 등록. body: `{ entryProjectId, roomSize }` |
+| `DELETE /api/online/projects/:id` | 본인 작품 등록 해제 |
+
+WebSocket은 `wss://code.205.kr/sync`에 연결한 뒤 첫 메시지로
+`{ "type":"join", "projectId":"...", "ownerId":"code205_id" }`를 전송한다.
+같은 Entry 작품 ID가 여러 계정에 등록되어도 등록 레코드별 방 풀로 분리된다.
+
 ## 개발
 
 ### 테스트
@@ -283,7 +306,7 @@ CODE-205/
 npm test
 ```
 
-**224개 테스트** (이전 210 + 작품 합치기 신규 14)가 통과해야 배포 가능.
+전체 테스트가 통과해야 배포 가능.
 
 ### CI/CD 파이프라인
 
@@ -292,7 +315,7 @@ npm test
 ```
 push → [ test ] ──(needs: test)──▶ [ deploy ] ──▶ [ health check ] → live
        npm ci                       git pull                HTTP 200 확인
-       224 tests                    npm install --omit=dev
+       npm test                     npm install --omit=dev
        ~15초                        pm2 startOrReload ecosystem.config.js
                                     pm2 save
                                     ~10초
