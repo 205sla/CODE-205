@@ -34,7 +34,7 @@ Entry 작품의 `$` 접두 변수와 리스트를 같은 방의 플레이어 사
 모든 엔드포인트는 `requireAuth`를 사용한다.
 
 - `GET /api/online/projects`: 현재 사용자의 등록 목록
-- `GET /api/online/usage`: 작품별 누적 연결·메시지·바이트 사용량
+- `GET /api/online/usage`: 작품별 누적 사용량과 등록 해제 이력을 포함한 계정 총합
 - `POST /api/online/projects`: `{ entryProjectId, roomSize }`
 - `DELETE /api/online/projects/:id`: 현재 사용자의 등록 삭제
 
@@ -83,6 +83,9 @@ engine 교체는 close code 1000으로 즉시 퇴장하므로 예약을 만들�
 `sync_usage`는 `owner_user_id + entry_project_id + day`를 기본키로 사용한다.
 `connections`, `messages_in/out`, `bytes_in/out`을 메모리에 누적하고 기본
 10초마다 UPSERT한다. 등록을 삭제해도 같은 계정·작품의 과거 사용량은 유지된다.
+`GET /api/online/usage`는 작품별 `usage` 배열과 전체 `total`을 함께 반환한다.
+`/online`은 현재 등록한 작품 카드 아래에 작품별 사용량을 표시하고, 별도 총합에는
+등록 해제한 작품의 과거 기록도 계속 포함한다.
 
 ## 보류한 하드닝
 

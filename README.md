@@ -96,6 +96,7 @@ npm start
 - `$` 변수·리스트 최신 상태를 메모리에 LWW로 머지하고 `patch`·`state` 메시지로 전달
 - 연결별 초당 30개 메시지 제한, heartbeat, 잠긴 방 동일 슬롯 단기 재접속
 - 작품별 연결·메시지·바이트 사용량을 일자별 SQLite 롤업으로 기록
+- `/online`에 등록 작품별 사용량과 등록 해제 이력을 포함한 계정 누적 총합 표시
 
 ### 정답 코드 자동 저장 + 복원 (회원)
 - 정답 통과(submit + allPass) 시 `Entry.exportProject` 결과(JSON, ≤100KB)를 `submissions` 테이블에 자동 저장 (문제당 최신 1개, 덮어쓰기)
@@ -303,7 +304,7 @@ CODE-205/
 | 엔드포인트 | 설명 |
 |-----------|------|
 | `GET /api/online/projects` | 본인이 등록한 Entry 작품 목록 |
-| `GET /api/online/usage` | 작품별 누적 연결·메시지·바이트 사용량 |
+| `GET /api/online/usage` | 작품별 누적 사용량과 등록 해제 이력을 포함한 계정 총합 |
 | `POST /api/online/projects` | 작품과 방 인원 등록. body: `{ entryProjectId, roomSize }` |
 | `DELETE /api/online/projects/:id` | 본인 작품 등록 해제 |
 

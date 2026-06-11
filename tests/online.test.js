@@ -271,7 +271,7 @@ describe('onlineProjectService', () => {
         meter.recordOutbound(registered, 250);
         assert.equal(meter.flush(), 1);
 
-        assert.deepEqual(onlineProjectService.listUsage(1, { db }), [{
+        const expected = [{
             entryProjectId: created.entryProjectId,
             connections: 1,
             messagesIn: 2,
@@ -282,7 +282,28 @@ describe('onlineProjectService', () => {
             totalBytes: 400,
             firstDay: '2026-06-11',
             lastDay: '2026-06-11',
-        }]);
+        }];
+        assert.deepEqual(onlineProjectService.listUsage(1, { db }), expected);
+        assert.deepEqual(onlineProjectService.summarizeUsage(expected), {
+            projects: 1,
+            connections: 1,
+            messagesIn: 2,
+            messagesOut: 1,
+            bytesIn: 150,
+            bytesOut: 250,
+            totalMessages: 3,
+            totalBytes: 400,
+        });
+
+        assert.equal(
+            onlineProjectService.deleteProject(1, created.id, { db }),
+            true
+        );
+        assert.deepEqual(
+            onlineProjectService.listUsage(1, { db }),
+            expected,
+            '등록 해제 후에도 작품 사용량은 유지되어야 한다'
+        );
     });
 });
 
@@ -391,7 +412,10 @@ describe('Entry Online HTTP + WebSocket integration', () => {
         const response = await fetch(baseUrl + '/online');
         assert.equal(response.status, 200);
         assert.match(response.headers.get('content-security-policy'), /default-src 'self'/);
-        assert.match(await response.text(), /온라인 멀티플레이 작품 등록/);
+        const body = await response.text();
+        assert.match(body, /온라인 멀티플레이 작품 등록/);
+        assert.match(body, /서버 사용량 총합/);
+        assert.match(body, /online-usage\.js/);
     });
 
     it('등록 API는 인증, 중복, 3개 한도와 삭제를 적용한다', async () => {
@@ -611,6 +635,27 @@ describe('Entry Online HTTP + WebSocket integration', () => {
         assert.ok(response.body.usage[0].messagesOut >= 2);
         assert.ok(response.body.usage[0].totalBytes > 0);
         client.socket.close();
+
+        const removed = await call(
+            'DELETE',
+            '/api/online/projects/' + created.body.project.id,
+            undefined,
+            account.cookie
+        );
+        assert.equal(removed.body.removed, true);
+
+        const afterDelete = await call(
+            'GET',
+            '/api/online/usage',
+            undefined,
+            account.cookie
+        );
+        assert.equal(afterDelete.body.usage.length, 1);
+        assert.equal(afterDelete.body.total.projects, 1);
+        assert.equal(
+            afterDelete.body.total.totalBytes,
+            response.body.usage[0].totalBytes
+        );
     });
 });
 

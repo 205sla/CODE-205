@@ -181,6 +181,29 @@ function listUsage(ownerUserId, opts = {}) {
     }));
 }
 
+function summarizeUsage(usage) {
+    return (Array.isArray(usage) ? usage : []).reduce((total, item) => {
+        total.projects += 1;
+        total.connections += Number(item.connections) || 0;
+        total.messagesIn += Number(item.messagesIn) || 0;
+        total.messagesOut += Number(item.messagesOut) || 0;
+        total.bytesIn += Number(item.bytesIn) || 0;
+        total.bytesOut += Number(item.bytesOut) || 0;
+        total.totalMessages += Number(item.totalMessages) || 0;
+        total.totalBytes += Number(item.totalBytes) || 0;
+        return total;
+    }, {
+        projects: 0,
+        connections: 0,
+        messagesIn: 0,
+        messagesOut: 0,
+        bytesIn: 0,
+        bytesOut: 0,
+        totalMessages: 0,
+        totalBytes: 0,
+    });
+}
+
 function findByOwner(entryProjectId, ownerId, opts = {}) {
     const normalizedId = normalizeProjectId(entryProjectId);
     const normalizedOwnerId = normalizeOwnerId(ownerId);
@@ -212,5 +235,6 @@ module.exports = {
     createProject,
     deleteProject,
     listUsage,
+    summarizeUsage,
     findByOwner,
 };

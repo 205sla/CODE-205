@@ -15,7 +15,11 @@ function createOnlineRouter() {
 
     router.get('/usage', (req, res) => {
         res.set('Cache-Control', 'no-store');
-        res.json({ usage: onlineProjectService.listUsage(req.user.id) });
+        const usage = onlineProjectService.listUsage(req.user.id);
+        res.json({
+            usage,
+            total: onlineProjectService.summarizeUsage(usage),
+        });
     });
 
     router.post('/projects', (req, res, next) => {
