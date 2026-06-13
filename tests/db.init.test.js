@@ -24,7 +24,7 @@ describe('db.init schema_version', () => {
         assert.ok(BASELINE_VERSION >= 1);
     });
 
-    it('v3 운영 DB를 최신 버전으로 올리며 Entry Online 테이블을 생성', () => {
+    it('v3 운영 DB를 최신 버전으로 올리며 Entry Online 테이블을 제거', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'code205-db-migrate-'));
         const dbPath = path.join(tmpDir, 'legacy.db');
         const legacy = new Database(dbPath);
@@ -48,15 +48,16 @@ describe('db.init schema_version', () => {
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_usage'"
         ).get();
 
-        assert.deepEqual(versions, [3, 4, 5]);
-        assert.equal(table.name, 'sync_projects');
-        assert.equal(usageTable.name, 'sync_usage');
+        // sync_* 는 v4/v5에서 만들어졌다가 v6에서 드롭되어 최종 상태에는 없어야 한다.
+        assert.deepEqual(versions, [3, 4, 5, 6]);
+        assert.equal(table, undefined);
+        assert.equal(usageTable, undefined);
 
         closeDb(dbPath);
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
 
-    it('v4 운영 DB를 v5로 올리며 기존 작품 등록을 보존한다', () => {
+    it('등록 데이터가 있는 운영 DB를 올리며 Entry Online 테이블을 제거하고 회원 데이터는 보존', () => {
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'code205-db-v4-'));
         const dbPath = path.join(tmpDir, 'legacy.db');
         const legacy = new Database(dbPath);
@@ -96,17 +97,25 @@ describe('db.init schema_version', () => {
             migrated.prepare(
                 'SELECT version FROM schema_version ORDER BY version'
             ).all().map((row) => row.version),
-            [4, 5]
+            [4, 5, 6]
         );
+        // 회원 데이터는 보존
         assert.equal(
-            migrated.prepare('SELECT COUNT(*) AS n FROM sync_projects').get().n,
+            migrated.prepare('SELECT COUNT(*) AS n FROM users').get().n,
             1
+        );
+        // Entry Online 테이블은 등록 데이터가 있어도 드롭된다
+        assert.equal(
+            migrated.prepare(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_projects'"
+            ).get(),
+            undefined
         );
         assert.equal(
             migrated.prepare(
                 "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sync_usage'"
-            ).get().name,
-            'sync_usage'
+            ).get(),
+            undefined
         );
 
         closeDb(dbPath);

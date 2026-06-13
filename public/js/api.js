@@ -38,10 +38,6 @@
         ME_SUBMISSIONS:    '/api/me/submissions',
         ME_SUBMISSIONS_ID: function (padId) { return '/api/me/submissions/' + padId; },
 
-        ONLINE_PROJECTS:    '/api/online/projects',
-        ONLINE_PROJECT_ID:  function (id) { return '/api/online/projects/' + id; },
-        ONLINE_USAGE:       '/api/online/usage',
-
         PROBLEMS:    '/api/problems',
         PROBLEM_ONE: function (padId) { return '/api/problems/' + padId; },
         PROBLEM_HAS_TESTS: function (padId) { return '/api/problems/' + padId + '/has-tests'; },
