@@ -3,8 +3,10 @@
 
 const http = require('http');
 const createApp = require('./app');
-const { PORT } = require('./config');
+const { PORT, validateProductionConfig } = require('./config');
 const { createEntryCvMonitor } = require('./services/entryCvMonitor');
+
+validateProductionConfig();
 
 const entryCvMonitor = createEntryCvMonitor();
 const app = createApp({ entryCvMonitor });

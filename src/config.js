@@ -7,6 +7,7 @@ const ROOT_DIR = path.resolve(__dirname, '..');
 const PUBLIC_DIR = path.join(ROOT_DIR, 'public');
 const PROBLEMS_DIR = path.join(ROOT_DIR, 'problems');
 const SPRITES_CATALOG = path.join(PUBLIC_DIR, 'sprites', 'catalog.json');
+const DEV_SESSION_SECRET = 'dev-only-insecure-secret-change-me';
 
 const PORT = process.env.PORT || 3000;
 const SITE_URL = process.env.SITE_URL || 'https://code.205.kr';
@@ -23,8 +24,22 @@ const DB_PATH = path.isAbsolute(DB_PATH_RAW)
 
 // SESSION_SECRET은 Phase 2-2에서 express-session에 주입.
 // 개발 편의를 위해 default를 두지만, production에서는 .env로 반드시 override.
-const SESSION_SECRET = process.env.SESSION_SECRET || 'dev-only-insecure-secret-change-me';
+const SESSION_SECRET = process.env.SESSION_SECRET || DEV_SESSION_SECRET;
 const SESSION_COOKIE_SECURE = process.env.SESSION_COOKIE_SECURE === 'true';
+
+function validateProductionConfig(env = process.env) {
+    if (env.NODE_ENV !== 'production') return;
+
+    const secret = env.SESSION_SECRET || '';
+    if (secret === DEV_SESSION_SECRET || Buffer.byteLength(secret, 'utf8') < 32) {
+        throw new Error(
+            'SESSION_SECRET must be set to an independent random value of at least 32 bytes.'
+        );
+    }
+    if (env.SESSION_COOKIE_SECURE !== 'true') {
+        throw new Error('SESSION_COOKIE_SECURE=true is required in production.');
+    }
+}
 
 // ─────── CSP scope (Phase 4 정리) ───────
 // Editor 자원은 CSP 비활성, 정적 페이지·API는 strict CSP — 분기를 한 곳에서.
@@ -50,6 +65,7 @@ module.exports = {
     DB_PATH,
     SESSION_SECRET,
     SESSION_COOKIE_SECURE,
+    validateProductionConfig,
     EDITOR_SCOPE_PATHS,
     EDITOR_SCOPE_PREFIXES,
     isEditorScope,

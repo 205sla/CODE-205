@@ -12,6 +12,7 @@ module.exports = {
             name: 'entry',
             script: 'src/server.js',
             cwd: __dirname,
+            node_args: '--env-file=/etc/code205.env',
             env: {
                 NODE_ENV: 'production',
                 PORT: 3000,

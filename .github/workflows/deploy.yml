@@ -54,6 +54,9 @@ jobs:
             git pull --ff-only origin main
             echo "== npm install (if needed) =="
             npm install --omit=dev --no-audit --no-fund
+            echo "== production config =="
+            test -r /etc/code205.env
+            node --env-file=/etc/code205.env -e "require('./src/config').validateProductionConfig()"
             echo "== pm2 startOrReload =="
             # ecosystem.config.js로 진입점·env를 선언해 관리.
             # 기존에 'pm2 start server.js'로 등록된 경우 한 번 delete해서 최신 script 경로로 재등록.
