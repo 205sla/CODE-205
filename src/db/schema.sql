@@ -1,4 +1,4 @@
--- CODE 205 SQLite 스키마 (v5)
+-- CODE 205 SQLite 스키마 (v6)
 -- src/db/init.js가 첫 부트 때 멱등 적용한다 (CREATE TABLE IF NOT EXISTS).
 -- 컬럼 추가/제약 변경은 새 마이그레이션 단계로 분리 (단순 테이블 추가는 여기에).
 
@@ -50,38 +50,9 @@ CREATE TABLE IF NOT EXISTS submissions (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- ─────── sync_projects (v4) ───────
--- Entry Online에 연결할 작품 등록.
--- 같은 Entry 작품은 여러 CODE 205 사용자가 각각 등록할 수 있지만,
--- 한 사용자는 같은 작품을 중복 등록할 수 없다.
-CREATE TABLE IF NOT EXISTS sync_projects (
-    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-    owner_user_id    INTEGER NOT NULL,
-    entry_project_id TEXT    NOT NULL,
-    room_size        INTEGER NOT NULL CHECK (room_size BETWEEN 2 AND 8),
-    token            TEXT    UNIQUE NOT NULL,
-    created_at       INTEGER NOT NULL,
-    UNIQUE (owner_user_id, entry_project_id),
-    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
--- ─────── sync_usage (v5) ───────
--- Entry Online 작품별 일자 사용량 롤업.
--- WebSocket 핫패스에서는 메모리에 누적하고 usageMeter가 주기적으로 합쳐 쓴다.
--- 등록을 삭제했다가 다시 추가해도 과거 사용량을 유지하도록 sync_projects가 아니라
--- 사용자와 Entry 작품 ID를 기준으로 보관한다.
-CREATE TABLE IF NOT EXISTS sync_usage (
-    owner_user_id    INTEGER NOT NULL,
-    entry_project_id TEXT    NOT NULL,
-    day              TEXT    NOT NULL,
-    connections      INTEGER NOT NULL DEFAULT 0,
-    messages_in      INTEGER NOT NULL DEFAULT 0,
-    messages_out     INTEGER NOT NULL DEFAULT 0,
-    bytes_in         INTEGER NOT NULL DEFAULT 0,
-    bytes_out        INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (owner_user_id, entry_project_id, day),
-    FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
-);
+-- Entry Online(sync_projects·sync_usage) 테이블은 v6에서 제거됨.
+-- 실시간 동기화는 독립 서비스 online.205.kr(205sla/entry-online)로 이관.
+-- 기존 DB는 init.js MIGRATIONS의 version 6에서 DROP한다(신규 DB는 애초에 만들지 않음).
 
 -- ─────── schema_version ───────
 -- 마이그레이션 추적용. baseline 버전(이 schema.sql이 표현하는 상태)은 init.js의
