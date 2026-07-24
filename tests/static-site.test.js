@@ -5,7 +5,10 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const path = require('path');
 
-const { buildStaticSite } = require('../tools/build-pages');
+const {
+    assertPortableAssetReference,
+    buildStaticSite,
+} = require('../tools/build-pages');
 
 const ROOT_DIR = path.resolve(__dirname, '..');
 let tmpDir;
@@ -83,6 +86,28 @@ describe('GitHub Pages 정적 빌드', () => {
         }
     });
 
+    it('외부·비이식 project 자산 URL을 빌드 전에 즉시 거부한다', () => {
+        for (const value of [
+            'https://cdn.example.com/sprite.png',
+            '//cdn.example.com/sprite.png',
+            'blob:https://code.205.kr/temporary-id',
+        ]) {
+            assert.throws(
+                () => assertPortableAssetReference(value, '001'),
+                /외부 또는 비이식 자산 URL/
+            );
+        }
+
+        for (const value of [
+            'data:image/png;base64,AA==',
+            '/data/assets/local.png',
+            'temp/sprite.png',
+            'lib/entry-js/local.svg',
+        ]) {
+            assert.doesNotThrow(() => assertPortableAssetReference(value, '001'));
+        }
+    });
+
     it('excludes unused Entry online-service bundles from the Pages artifact', () => {
         const excluded = [
             'lib/entry-lms',
@@ -102,6 +127,16 @@ describe('GitHub Pages 정적 빌드', () => {
         assert.ok(entryIndex > guardIndex);
         assert.ok(legacyVideoIndex > guardIndex);
         assert.ok(fs.existsSync(path.join(siteDir, 'lib', 'legacy-video', 'index.js')));
+    });
+
+    it('installs the network guard before the merge engine', () => {
+        for (const relative of ['merge.html', path.join('merge', 'index.html')]) {
+            const html = fs.readFileSync(path.join(siteDir, relative), 'utf8');
+            const guardIndex = html.indexOf('js/network-guard.js');
+            const engineIndex = html.indexOf('js/merge/merge-engine.js');
+            assert.ok(guardIndex >= 0, relative);
+            assert.ok(engineIndex > guardIndex, relative);
+        }
     });
 
     it('adds same-origin Content Security Policy to every generated HTML page', () => {

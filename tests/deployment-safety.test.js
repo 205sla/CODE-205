@@ -24,7 +24,12 @@ describe('배포 안전장치', () => {
         assert.match(workflow, /^\s*push:/m);
         assert.match(workflow, /branches:\s*\[main\]/);
         assert.match(workflow, /npm run build:pages/);
-        assert.match(workflow, /actions\/deploy-pages@v4/);
+        assert.match(workflow, /actions\/checkout@v6/);
+        assert.match(workflow, /actions\/setup-node@v6/);
+        assert.match(workflow, /node-version:\s*["']20["']/);
+        assert.match(workflow, /actions\/configure-pages@v6/);
+        assert.match(workflow, /actions\/upload-pages-artifact@v5/);
+        assert.match(workflow, /actions\/deploy-pages@v5/);
         assert.doesNotMatch(workflow, /\bssh\b/i);
         assert.doesNotMatch(workflow, /DEPLOY_(?:HOST|KEY|USER)/);
     });

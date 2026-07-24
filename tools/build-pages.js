@@ -71,6 +71,19 @@ function normalizeTarPath(value) {
     return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\//, '');
 }
 
+function assertPortableAssetReference(value, problemId) {
+    if (typeof value !== 'string' || !value) return;
+
+    const trimmed = value.trim();
+    const scheme = /^([a-z][a-z0-9+.-]*):/i.exec(trimmed);
+    const hasUnsupportedScheme = scheme && scheme[1].toLowerCase() !== 'data';
+    if (/^\/\//.test(trimmed) || hasUnsupportedScheme) {
+        throw new Error(
+            `${problemId}: project.json에 외부 또는 비이식 자산 URL을 사용할 수 없습니다: ${value}`
+        );
+    }
+}
+
 function parseTar(buffer) {
     const entries = new Map();
     let offset = 0;
@@ -300,7 +313,8 @@ function buildProblemData(rootDir, outDir) {
 
             const rewriteAsset = (value) => {
                 if (typeof value !== 'string' || !value) return value;
-                if (/^(https?:|data:|\/)/.test(value)) return value;
+                assertPortableAssetReference(value, paddedId);
+                if (/^(data:|\/)/i.test(value)) return value;
                 const normalized = normalizeTarPath(value);
                 if (/^lib\//.test(normalized)) return '/' + normalized;
                 if (!/^temp\//.test(normalized)) return value;
@@ -418,6 +432,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    assertPortableAssetReference,
     buildStaticSite,
     parseTar,
     normalizeTarPath,

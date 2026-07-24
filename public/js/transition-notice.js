@@ -37,6 +37,33 @@
         }
     }
 
+    function isolateBackground(document, overlay) {
+        var states = [];
+        var children = Array.prototype.slice.call(document.body.children || []);
+
+        children.forEach(function (node) {
+            if (node === overlay || typeof node.setAttribute !== 'function') return;
+            states.push({
+                node: node,
+                hadInert: node.hasAttribute('inert'),
+                ariaHidden: node.getAttribute('aria-hidden'),
+            });
+            node.setAttribute('inert', '');
+            node.setAttribute('aria-hidden', 'true');
+        });
+
+        return function restoreBackground() {
+            states.forEach(function (state) {
+                if (!state.hadInert) state.node.removeAttribute('inert');
+                if (state.ariaHidden === null) {
+                    state.node.removeAttribute('aria-hidden');
+                } else {
+                    state.node.setAttribute('aria-hidden', state.ariaHidden);
+                }
+            });
+        };
+    }
+
     function render(root) {
         if (root.document.querySelector('[data-code205-transition-notice]')) return null;
 
@@ -62,18 +89,32 @@
         ].join('');
 
         var button = overlay.querySelector('button');
+        var closed = false;
+        var restoreBackground;
         function close() {
+            if (closed) return;
+            closed = true;
             markDismissed(root.sessionStorage);
             root.document.removeEventListener('keydown', onKeyDown);
+            restoreBackground();
             overlay.remove();
         }
         function onKeyDown(event) {
-            if (event.key === 'Escape') close();
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                close();
+                return;
+            }
+            if (event.key === 'Tab') {
+                event.preventDefault();
+                button.focus();
+            }
         }
 
         button.addEventListener('click', close);
         root.document.addEventListener('keydown', onKeyDown);
         root.document.body.appendChild(overlay);
+        restoreBackground = isolateBackground(root.document, overlay);
         button.focus();
         return overlay;
     }
@@ -96,6 +137,7 @@
         NOTICE_END_AT: NOTICE_END_AT,
         SESSION_KEY: SESSION_KEY,
         shouldDisplay: shouldDisplay,
+        isolateBackground: isolateBackground,
         install: install,
         render: render,
     };
