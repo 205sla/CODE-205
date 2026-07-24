@@ -14,7 +14,6 @@
         <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
         <link href="lib/entry-js/dist/entry.min.css" rel="stylesheet" />
         <link href="lib/entry-tool/dist/entry-tool.css" rel="stylesheet" />
-        <link href="lib/entry-lms/dist/assets/app.css" rel="stylesheet" />
         <!-- common.css는 editor.css 앞: header user-menu 스타일을 가져오되, body 등 충돌 속성은 editor.css가 cascade로 override -->
         <link href="css/common.css" rel="stylesheet" />
         <link href="css/editor.css" rel="stylesheet" />
@@ -39,15 +38,6 @@
                 <div class="confirm-btns">
                     <button id="confirm-yes">초기화</button>
                     <button id="confirm-no">취소</button>
-                </div>
-            </div>
-        </div>
-        <div id="restore-overlay" hidden>
-            <div id="restore-dialog">
-                <p id="restore-message">이전에 푼 코드가 있어요. 불러오시겠어요?</p>
-                <div class="confirm-btns">
-                    <button id="restore-yes">내 풀이 불러오기</button>
-                    <button id="restore-no">처음부터 시작</button>
                 </div>
             </div>
         </div>
@@ -77,6 +67,9 @@
             </div>
         </div>
         <div id="popup-container"></div>
+
+        <!-- Block accidental calls to services outside the current CODE 205 origin. -->
+        <script src="js/network-guard.js"></script>
 
         <!-- Language -->
         <script src="lib/entry-js/extern/lang/ko.js"></script>
@@ -111,15 +104,9 @@
         <script src="lib/entry-js/extern/util/handle.js"></script>
         <script src="lib/entry-js/extern/util/bignumber.min.js"></script>
 
-        <!-- Socket.io (local vendored — was playentry.org/lib/socket.io-client) -->
-        <script src="lib/vendor/socket.io-client/socket.io.js"></script>
-
         <!-- React 18.3.1 (local vendored — was unpkg.com) -->
         <script src="lib/vendor/react/react.production.min.js"></script>
         <script src="lib/vendor/react/react-dom.production.min.js"></script>
-
-        <!-- Entry LMS (local) -->
-        <script src="lib/entry-lms/dist/assets/app.js"></script>
 
         <!-- Entry static (block definitions) -->
         <script src="lib/entry-js/extern/util/static.js"></script>
@@ -137,11 +124,11 @@
              editor-pure.js defines pure helpers used by editor.js and is unit-tested
              via `npm test` — must be loaded first since editor.js references them. -->
         <script src="js/dom-escape.js"></script>
-        <script src="js/api.js"></script>
         <script src="js/editor-pure.js"></script>
         <script src="js/solved-sync.js"></script>
-        <script src="js/submission-sync.js"></script>
-        <script src="js/common-header.js"></script>
+        <script src="js/merge/pako.min.js"></script>
+        <script src="js/merge/tar.js"></script>
+        <script src="js/local-export.js"></script>
         <script src="js/editor.js"></script>
     </body>
 </html>

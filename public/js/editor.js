@@ -46,7 +46,7 @@ var CONFIG = {
 // trace. Anything accessed across more than one function lives here.
 var GradingState = {
     // URL-param problem id. null in free mode or while tests are loading.
-    // Set by loadProblemTests() once the server confirms the problem has tests.
+    // Set by loadProblemTests() once static problem metadata confirms tests exist.
     problemId: null,
 
     // True from runAllTests() entry until its Promise chain fully settles
@@ -82,8 +82,10 @@ var GradingState = {
     prevTurbo: null
 };
 
-// Local sprite library fetched from /api/sprites (page-scope, not grading state).
+// Local sprite library fetched from /sprites/catalog.json (page-scope, not grading state).
 var __spriteCatalog = [];
+// Reuse one metadata request across the problem panel, test controls, and sprite filter.
+var __problemMetaPromises = {};
 
 // ============================================================
 // 2. Workspace mode toggle (called by header buttons via onclick)
@@ -142,8 +144,7 @@ $(document).ready(function () {
 
     if (problemId) {
         loadProblemProject(problemId)
-            .finally(banUnusedCategories)
-            .then(function () { return checkAndOfferRestore(problemId, banUnusedCategories); });
+            .finally(banUnusedCategories);
         loadProblemMeta(problemId);
         loadProblemTests(problemId);
     } else {
@@ -166,80 +167,59 @@ $(document).ready(function () {
 // 4. Data fetching — sprites / problem project / meta / tests
 // ============================================================
 
+function paddedProblemId(problemId) {
+    return String(parseInt(problemId, 10)).padStart(3, '0');
+}
+
+function problemDataUrl(problemId, fileName) {
+    return '/data/problems/' + paddedProblemId(problemId) + '/' + fileName;
+}
+
+function fetchProblemMeta(problemId) {
+    var key = paddedProblemId(problemId);
+    if (!__problemMetaPromises[key]) {
+        __problemMetaPromises[key] = fetch(problemDataUrl(problemId, 'problem.json'))
+            .then(function (r) {
+                if (r.ok) return r.json();
+                throw new Error('Problem metadata request failed: ' + r.status);
+            });
+    }
+    return __problemMetaPromises[key];
+}
+
 // Fetch sprite catalog for the current mode (problem-specific or free mode).
-// In free mode (no problemId), returns all 10. In problem mode, server filters
-// by the problem's meta.json `sprites` field; falls back to all if unspecified.
+// In problem mode, problem.json의 sprites id 순서로 브라우저에서 필터링한다.
 function loadSpriteCatalog(problemId) {
-    var url = '/api/sprites' + (problemId ? '?problem=' + encodeURIComponent(problemId) : '');
-    fetch(url)
-        .then(function (r) { return r.ok ? r.json() : { sprites: [] }; })
-        .then(function (data) { __spriteCatalog = (data && data.sprites) || []; })
+    var catalogPromise = fetch('/sprites/catalog.json')
+        .then(function (r) { if (r.ok) return r.json(); throw r; });
+    var metaPromise = problemId
+        ? fetchProblemMeta(problemId)
+        : Promise.resolve(null);
+
+    Promise.all([catalogPromise, metaPromise])
+        .then(function (values) {
+            var all = Array.isArray(values[0]) ? values[0] : [];
+            var meta = values[1];
+            if (!meta || !Array.isArray(meta.sprites)) {
+                __spriteCatalog = all;
+                return;
+            }
+            var byId = {};
+            all.forEach(function (sprite) { byId[sprite.id] = sprite; });
+            __spriteCatalog = meta.sprites.map(function (id) { return byId[id]; }).filter(Boolean);
+        })
         .catch(function () { __spriteCatalog = []; });
 }
 
-// Load a problem's starter project (.ent → tar → project.json) into Entry.
+// Load a problem's build-time extracted starter project into Entry.
 // On any failure (404, network, parse), falls back to an empty project
 // so the editor stays usable. Returns a Promise that settles after
 // Entry.loadProject(...) returns — callers can chain init logic via .then()/.finally().
 function loadProblemProject(problemId) {
-    return fetch('/api/problems/' + problemId)
+    return fetch(problemDataUrl(problemId, 'project.json'))
         .then(function (r) { if (r.ok) return r.json(); throw r; })
         .then(function (project) { Entry.loadProject(project); })
         .catch(function () { Entry.loadProject(bot205DefaultProject()); });
-}
-
-// 로그인 사용자가 이전에 풀어 저장된 코드가 있으면 복원 모달을 띄우고,
-// "내 풀이 불러오기" 선택 시 Entry에 덮어쓰기 로드한다. 비로그인·미저장·실패는 silent.
-// 모달 표시 시점은 loadProblemProject가 끝난 뒤이므로 화면에는 기본 problem.ent가 이미 보임.
-function checkAndOfferRestore(problemId, onAfterLoad) {
-    if (!window.SubmissionSync || typeof window.SubmissionSync.loadMySubmission !== 'function') {
-        return Promise.resolve();
-    }
-    return window.SubmissionSync.loadMySubmission(problemId).then(function (project) {
-        if (!project) return; // 비로그인·미저장·파싱 실패 — 정상 흐름
-        showRestoreOverlay(function (yes) {
-            if (yes) {
-                try {
-                    // 이전 problem.ent로 로드된 객체·블록을 먼저 깨끗이 정리해야
-                    // Entry.loadProject가 기존 상태에 누적하지 않고 깨끗이 교체.
-                    // (reset 버튼도 같은 패턴: clearProject → loadProblemProject)
-                    if (typeof Entry.clearProject === 'function') Entry.clearProject();
-                    Entry.loadProject(project);
-                    if (typeof onAfterLoad === 'function') onAfterLoad();
-                } catch (e) {
-                    console.warn('[checkAndOfferRestore] Entry.loadProject failed', e);
-                }
-            }
-        });
-    });
-}
-
-// 복원 모달 표시·핸들러 1회 바인딩. ESC / 배경 클릭 = 처음부터 시작.
-// initReset과 같은 dismiss UX (ESC + background click) 보장.
-function showRestoreOverlay(onChoice) {
-    var overlay = document.getElementById('restore-overlay');
-    var yesBtn = document.getElementById('restore-yes');
-    var noBtn = document.getElementById('restore-no');
-    if (!overlay || !yesBtn || !noBtn) return;
-
-    function close(yes) {
-        overlay.hidden = true;
-        yesBtn.removeEventListener('click', onYes);
-        noBtn.removeEventListener('click', onNo);
-        document.removeEventListener('keydown', onKey);
-        overlay.removeEventListener('click', onBg);
-        if (typeof onChoice === 'function') onChoice(yes);
-    }
-    function onYes() { close(true); }
-    function onNo()  { close(false); }
-    function onKey(e) { if (e.key === 'Escape') close(false); }
-    function onBg(e)  { if (e.target === overlay) close(false); }
-
-    yesBtn.addEventListener('click', onYes);
-    noBtn.addEventListener('click', onNo);
-    document.addEventListener('keydown', onKey);
-    overlay.addEventListener('click', onBg);
-    overlay.hidden = false;
 }
 
 // Build a starter project with CODE 205's mascot (205봇 / bot205) instead
@@ -297,26 +277,29 @@ function bot205DefaultProject() {
 }
 
 function loadProblemTests(problemId) {
-    fetch('/api/problems/' + problemId + '/has-tests')
-        .then(function (r) { return r.json(); })
+    return fetchProblemMeta(problemId)
         .then(function (info) {
             if (info.hasTests) {
                 GradingState.problemId = problemId;
                 document.getElementById('test-btn').style.display = '';
                 document.getElementById('submit-btn').style.display = '';
             }
+        })
+        .catch(function () {
+            GradingState.problemId = null;
+            document.getElementById('test-btn').style.display = 'none';
+            document.getElementById('submit-btn').style.display = 'none';
         });
 }
 
 function fetchTestCases(mode) {
-    return fetch('/api/problems/' + GradingState.problemId + '/tests?mode=' + mode)
+    return fetch(problemDataUrl(GradingState.problemId, 'tests.json'))
         .then(function (r) { if (r.ok) return r.json(); throw r; })
-        .then(function (data) { return data.cases || []; });
+        .then(function (data) { return Array.isArray(data[mode]) ? data[mode] : []; });
 }
 
 function loadProblemMeta(problemId) {
-    fetch('/api/problems/' + problemId + '/meta')
-        .then(function (r) { if (r.ok) return r.json(); throw r; })
+    return fetchProblemMeta(problemId)
         .then(function (meta) {
             document.getElementById('problem-panel-title').textContent = meta.title || ('문제 ' + problemId);
             document.getElementById('problem-panel-body').innerHTML = renderMarkdown(meta.description);
@@ -416,9 +399,8 @@ function initReset() {
 // -compatible archive that can be uploaded via "오프라인 작품 불러오기"
 // ============================================================
 
-// Ask the Entry engine for its current project JSON, POST it to the server
-// (which re-bundles local /images/* assets into the tar), then trigger a
-// browser download of the returned .ent blob. Disabled during grading.
+// Ask the Entry engine for its current project JSON, then bundle local assets,
+// tar and gzip entirely in the browser. Disabled during grading.
 function initExport() {
     var btn = document.getElementById('export-btn');
     if (!btn) return;
@@ -434,27 +416,14 @@ function initExport() {
         var originalText = btn.innerHTML;
         btn.innerHTML = '저장 중…';
 
-        fetch('/api/export', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(project)
-        }).then(function (r) {
-            if (!r.ok) throw new Error('서버 오류 (' + r.status + ')');
-            // Honor server-provided filename when present
-            var cd = r.headers.get('Content-Disposition') || '';
-            var m = /filename="([^"]+)"/.exec(cd);
-            var filename = m ? m[1] : 'code205.ent';
-            return r.blob().then(function (blob) { return { blob: blob, filename: filename }; });
-        }).then(function (out) {
-            var url = URL.createObjectURL(out.blob);
-            var a = document.createElement('a');
-            a.href = url;
-            a.download = out.filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-        }).catch(function (err) {
+        if (!window.Code205Export || typeof window.Code205Export.exportProject !== 'function') {
+            alert('작품 저장 모듈을 불러오지 못했습니다.');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            return;
+        }
+
+        window.Code205Export.exportProject(project).catch(function (err) {
             alert('저장 실패: ' + (err && err.message ? err.message : err));
         }).then(function () {
             btn.disabled = false;
@@ -661,9 +630,7 @@ function showGradeModal() {
     document.getElementById('grade-overlay').hidden = false;
 }
 
-// Persist a solved problem id locally + sync to server (if logged in).
-// SolvedSync 모듈이 두 저장소(localStorage·서버)를 동시에 처리.
-// 비로그인이거나 네트워크 실패면 markRemote는 silent fail — 다음 페이지 로드 시 동기화.
+// Persist a solved problem id in this browser only.
 //
 // editor.html에서 solved-sync.js를 editor.js보다 먼저 동기 <script>로 로드하므로
 // window.SolvedSync는 항상 존재. (확신 못할 때만 가드 추가.)
@@ -671,7 +638,6 @@ function markProblemSolved(id) {
     var idNum = parseInt(id, 10);
     if (!idNum) return;
     window.SolvedSync.markLocal(idNum);
-    window.SolvedSync.markRemote(idNum);
 }
 
 function renderGradeResults(results, running, mode) {
@@ -797,10 +763,6 @@ function runAllTests(cases, title, mode) {
         if (mode === 'submit' && GradingState.problemId && allPass) {
             footer.classList.add('show-home');
             markProblemSolved(GradingState.problemId);
-            // 정답 코드도 서버에 자동 저장 (로그인 사용자만, 실패 silent)
-            if (window.SubmissionSync) {
-                window.SubmissionSync.saveSubmission(GradingState.problemId);
-            }
         }
     });
 }

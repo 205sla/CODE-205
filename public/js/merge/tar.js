@@ -168,3 +168,8 @@ const Tar = (() => {
 
   return { parse, create };
 })();
+
+// node:test에서도 브라우저와 같은 구현으로 .ent 산출물을 검증한다.
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = Tar;
+}

@@ -1,6 +1,6 @@
 /* ============================================================
    index.js — 메인 문제 선택 화면
-   /api/problems에서 문제 목록을 받아 두 섹션으로 렌더링.
+   /data/problems.json에서 문제 목록을 받아 두 섹션으로 렌더링.
    - 상단 "학습 시작하기": category가 'sample'·'tutorial'인 문제 (필터 무관, 항상 전체 표시)
    - 하단 "전체 문제": category가 없는 일반 문제 (난이도·해결 여부 필터 적용)
    localStorage: entry:solved (해결 기록), entry:filter (필터 상태 기억)
@@ -183,14 +183,13 @@ function renderGrid(problems, solved, filter) {
 
 // ─────── 부트스트랩 ───────
 
-window.Api.getJson(window.Api.URL.PROBLEMS)
-    .then(function (r) {
-        if (r.status !== 200 || !Array.isArray(r.data)) {
-            throw new Error('HTTP ' + r.status);
-        }
-        return r.data;
+fetch('/data/problems.json')
+    .then(function (response) {
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        return response.json();
     })
     .then(function (problems) {
+        if (!Array.isArray(problems)) throw new Error('invalid problems manifest');
         state.problems = problems;
         state.solved = getSolvedSet();
 
@@ -211,20 +210,9 @@ window.Api.getJson(window.Api.URL.PROBLEMS)
             renderGrid(state.problems, state.solved, state.filter);
         });
 
-        // 로그인 사용자라면 서버와 양방향 동기화 후 grid 재렌더.
-        // 비로그인이거나 SolvedSync 미로드면 no-op (위 렌더가 기준).
-        if (window.SolvedSync) {
-            window.SolvedSync.syncWithServer().then(function (result) {
-                if (result.added > 0 || result.uploaded > 0) {
-                    state.solved = getSolvedSet();
-                    renderTopSection(state.problems, state.solved);
-                    renderGrid(state.problems, state.solved, state.filter);
-                }
-            });
-        }
     })
     .catch(function (err) {
-        console.error('[/api/problems]', err);
+        console.error('[/data/problems.json]', err);
         document.getElementById('problem-list').innerHTML =
             '<div class="empty">문제 목록을 불러올 수 없습니다. 잠시 후 다시 시도해주세요.</div>';
     });

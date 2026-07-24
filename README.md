@@ -1,392 +1,215 @@
 # CODE 205
 
-블록 코딩 기반 알고리즘 문제 풀이 플랫폼입니다.
-좌측 패널에서 문제 지문을 읽고, 우측 에디터로 블록을 조립하여 풀이합니다.
-제출 시 브라우저에서 테스트 케이스를 자동 채점합니다.
+블록 코딩 기반 알고리즘 문제 풀이 플랫폼입니다. 좌측에서 문제를 읽고 우측 EntryJS 에디터에서 블록 또는 파이썬 모드로 풀이하며, 브라우저에서 테스트와 제출 채점을 실행합니다.
 
-🌐 **Live**: [https://code.205.kr](https://code.205.kr) (Beta)
+🌐 **서비스**: [https://code.205.kr](https://code.205.kr) (Beta)
 
-> **상표**: "205"®는 대한민국 특허청에 출원된 등록 상표입니다 (출원번호 40-2023-0165693). 상표 및 3rd-party 라이선스 정보는 [NOTICE.md](NOTICE.md)를 참고하세요.
+> **상표**: "205"®는 대한민국 특허청에 출원된 등록 상표입니다(출원번호 40-2023-0165693). 상표 및 제3자 라이선스는 [NOTICE.md](NOTICE.md)를 참고하세요.
 >
-> **Attribution**: 이 프로젝트는 [entrylabs/entryjs](https://github.com/entrylabs/entryjs) (Apache License 2.0)를 런타임 엔진으로 사용합니다. Entry Labs의 공식 서비스가 아닙니다.
+> **Attribution**: [entrylabs/entryjs](https://github.com/entrylabs/entryjs)(Apache License 2.0)를 런타임 엔진으로 사용합니다. Entry Labs의 공식 서비스가 아닙니다.
 
-## 실행 방법
+## 현재 배포 구조
+
+CODE 205의 사용자-facing 사이트는 GitHub Pages용 완전 정적 산출물로 빌드됩니다.
+
+- 문제 목록·설명·테스트·초기 프로젝트: 빌드 시 `/data/` 아래 정적 JSON과 공유 자산으로 변환
+- 채점: 브라우저에서 실행
+- 클리어 기록: `localStorage['entry:solved']`에만 저장
+- 작품 합치기와 `.ent` 내보내기: 브라우저에서 처리
+- 회원가입·로그인·프로필·기기 간 동기화: 제공하지 않음
+- 상태 모니터: 정적 사이트에서 제공하지 않음
+
+기존 Express/SQLite/PM2 소스는 과거 구현 기록과 회귀 테스트를 위해 `src/`, `db/`, `ecosystem.config.js`에 남아 있지만 배포에는 사용하지 않습니다. 기존 회원정보·세션·서버 클리어 기록·제출 코드는 별도 백업 없이 삭제했으며, Oracle VM은 다른 용도로 유지합니다.
+
+### Entry 서비스와의 분리
+
+CODE 205는 EntryJS 오픈소스 엔진과 필요한 이미지·소리·라이브러리를 자체 정적 파일로 배포합니다. 실행 중 playentry.org API, CDN, 로그인 또는 작품 서버를 사용하지 않으며, 문제 프로젝트에도 외부 HTTP 자산 URL을 허용하지 않습니다.
+
+- 사용하지 않는 `entry-lms`, `socket.io-client`는 원본 저장소에는 보존하지만 Pages 산출물에서는 제외
+- EntryJS가 초기화 시 요구하는 `legacy-video` 어댑터는 로컬로 포함하되, 기능은 비활성화하고 외부 모델 요청은 차단
+- 편집기 시작 전에 네트워크 가드를 설치해 다른 origin으로 향하는 Fetch, XHR, WebSocket, EventSource, Beacon 차단
+- 모든 Pages HTML에 `connect-src 'self'`를 포함한 Content Security Policy 삽입
+- 외부 실행 스크립트·스타일과 외부 프로젝트 자산이 다시 들어오면 정적 빌드 테스트 실패
+
+따라서 Entry 공식 서비스가 중단되어도 현재 CODE 205 기능은 자체 정적 자산과 호스팅이 유지되는 동안 계속 실행할 수 있습니다. 다만 GitHub Pages·사용자 도메인·브라우저 저장소는 별도 운영 의존성이고, EntryJS 자체는 계속 보존·유지보수해야 하는 로컬 런타임 의존성입니다.
+
+## 로컬 실행
+
+요구 사항: Node.js 20 이상.
 
 ```bash
-npm install
+npm ci
+npm run build:pages
+npm run preview:pages
+```
+
+브라우저에서 `http://127.0.0.1:4173`에 접속합니다. `_site/`는 빌드 산출물이므로 Git에 커밋하지 않습니다.
+
+과거 서버 구현을 로컬 회귀 검증할 때만 다음 명령을 사용합니다. 운영 배포 경로는 없습니다.
+
+```bash
 npm start
 ```
 
-브라우저에서 `http://localhost:3000` 접속 (Windows는 `server.bat` 더블클릭, 기본 포트 3005).
-
-> 반드시 HTTP 서버를 통해 접속해야 합니다. `index.html`을 직접 더블클릭하면 브라우저 보안 정책 때문에 동작하지 않습니다.
-
-### 요구 사항
-- Node.js ≥ 20 (`better-sqlite3@12`가 Node 20+ 필요)
-- 서버에 native addon 빌드용 `build-essential` + `python3-dev` (회원 기능을 위한 SQLite 의존)
-
-### 환경 변수 (선택)
-`.env.template`을 `.env`로 복사 후 필요 시 override:
-- `PORT` (기본 3000)
-- `SITE_URL` (기본 `https://code.205.kr`)
-- `DB_PATH` (기본 `./db/data.db`)
-- `SESSION_SECRET` (production은 `openssl rand -base64 48`로 강한 값 권장)
-- `SESSION_COOKIE_SECURE` (HTTPS 뒤에서 `true`)
-
-## 화면 구성
-
-### 메인 화면
-- 문제 목록을 카드로 표시, 난이도를 별(0~5)로 표시
-- 해결한 문제는 초록 테두리 + "✓ 해결" 배지로 구분
-- 상단 "학습 시작하기" 영역에 sample / tutorial 카테고리 노출
-- 난이도·해결 여부 필터 패널, localStorage에 상태 보존
-- 헤더 우측: 비로그인 시 "로그인" + "가입" 버튼, 로그인 시 "닉네임 ▾" 드롭다운(프로필·로그아웃)
-
-### 에디터 화면
-- 좌측: 문제 설명 패널 (Markdown 렌더링, 드래그로 크기 조절)
-- 우측: 엔트리 블록 코딩 워크스페이스 + 스테이지
-- 상단 헤더: 블록/파이썬 모드 전환, 실행취소/다시실행, 초기화, 내 컴퓨터에 저장하기, 테스트/제출, 로그인 사용자 드롭다운
-- 풀었던 문제 재진입 시 "이전에 푼 코드를 불러오시겠어요?" 확인 모달
-
-### 회원 페이지
-- `/signup.html` — 가입 폼 (아이디·비밀번호·출생연도 필수, 이메일·표시이름 선택). 14세 이상만 가입 가능
-- `/login.html` — 로그인 폼
-- `/profile.html` — 6개 섹션:
-  1. 기본 정보 (이메일·표시이름 변경)
-  2. 풀이 통계 (총 N/M + 난이도별 그리드)
-  3. 내가 푼 코드 (자동 저장된 정답 목록, 클릭 = 에디터 진입)
-  4. 비밀번호 변경
-  5. 풀이 데이터 초기화 (solved + 코드 일괄 삭제)
-  6. 계정 삭제 (CASCADE로 모든 회원 데이터 정리)
-
-### 정적 페이지
-- `/contribute.html` — 문제 기여 가이드
-- `/merge` — 엔트리 작품(.ent) 합치기 도구 (클라이언트 사이드)
-- `/privacy.html` — 개인정보 처리방침 (회원 데이터 수집·보유·삭제 정책)
-- `/terms.html` — 이용약관
-
 ## 주요 기능
 
-### 작품 합치기 (`/merge`)
-- 여러 엔트리 작품(`.ent`)을 하나로 합치는 도구. **처리는 전량 브라우저(클라이언트 사이드)** — 파일이 서버로 업로드되지 않아 안전하고 서버 부하 0
-- 각 작품의 장면(scene) ID를 난수화해 충돌을 막고, 오브젝트·변수·리스트를 재귀 병합. `대답`·`초시계` 등 특수 변수는 중복 제거
-- 파일당 50MB · 전체 150MB · 최대 10개. 합친 결과 `머지.ent`를 다운로드 → playentry.org 오프라인 작품 불러오기로 사용
-- 진행률은 **바이트 가중 + 단계별**로 표시(수집 82% → 후처리 88% → 압축 100%), gzip은 스트리밍으로 세분 진행
-- 기타 설정: "리메이크 표시 지우기", "대답·초시계 숨기기". 병합 엔진은 `extensions/entry-merge-extension` 로직 이식, 순수 함수는 `tests/merge.test.js`로 검증
+### 문제 풀이와 로컬 채점
 
-### 회원 시스템 (선택)
-- **비회원으로도 핵심 기능 그대로 이용 가능**. 회원 가입은 추가 가치(서버 동기화·코드 보관·통계)를 위한 선택
-- 가입 정책: username 영문·숫자·_ 3~20자 (대소문자 구분 없이 lowercase로 정규화 — `User123`/`USER123`이 별개 계정으로 가입되는 사칭 차단), 비밀번호 8자 이상 + 영문 + 숫자, 14세 이상
-- **비밀번호는 bcrypt(cost 10) 해시로만 저장**. 평문 미보관, 운영자도 조회 불가. 분실 시 복구 미제공 — 안전한 곳에 보관 필수
-- 세션 쿠키 `code205.sid` — `httpOnly` + `sameSite=lax` + `secure`(HTTPS) + 7일
-- Rate-limit (IP 기준): login 10회/15분, signup 5회/1시간
-- 가입 폼에 "엔트리(playentry.org) 계정과 다른 비밀번호 사용" 강조 안내
+- 문제 100개와 난이도·해결 여부 필터
+- 블록/파이썬 모드
+- 공개 테스트와 제출 테스트
+- 말하기, 변수, 리스트, 묻고 기다리기 자동 응답 지원
+- 무한 반복 타임아웃과 실행 오류 감지
+- 제출 전체 통과 시 현재 브라우저의 클리어 목록에 문제 ID 추가
 
-### 풀이 기록 동기화 (회원)
-- 정답 통과 시 problem_id가 서버 `solutions` 테이블에 자동 등록
-- 페이지 로드 시 localStorage(`entry:solved`) ↔ 서버 양방향 자동 병합
-- 비회원은 기존대로 localStorage만 사용 (강제 로그인 X)
+클리어 기록은 동일한 `https://code.205.kr` origin에서 유지됩니다. 다른 브라우저·기기와 동기화되지 않으며 사이트 데이터 삭제 시 복구할 수 없습니다.
 
-### 정답 코드 자동 저장 + 복원 (회원)
-- 정답 통과(submit + allPass) 시 `Entry.exportProject` 결과(JSON, ≤100KB)를 `submissions` 테이블에 자동 저장 (문제당 최신 1개, 덮어쓰기)
-- 풀었던 문제 재진입 시 "내 풀이 불러오기 / 처음부터 시작" 확인 모달
-- 프로필 "내가 푼 코드" 행 클릭 = 해당 문제의 에디터로 즉시 이동 → 모달 자동 트리거
-- 모든 회원 데이터는 프로필 페이지에서 직접 수정·삭제 가능. 계정 삭제 시 외래키 CASCADE로 자동 정리
+정적 호스팅에서는 테스트 데이터와 채점 로직이 브라우저에 전달되고 `localStorage`도 사용자가 수정할 수 있습니다. 따라서 이 구성은 학습용 자기점검에는 적합하지만, 클리어 인증·순위·부정행위 방지가 필요한 서비스에는 적합하지 않습니다.
 
-### 채점 시스템
-- **로컬 채점**: 모든 채점은 브라우저에서 실행 (서버 부하 없음)
-- **테스트하기**: 공개 케이스로 풀이 검증 (케이스 이름, 실패 상세 공개)
-- **제출하기**: 숨김 케이스로 최종 평가 (케이스 이름, 실패 상세 비공개)
-- **화면 차단 모달**: 채점 중 전체 화면을 가리고 진행 현황만 표시
-- **⏹ 채점 중단** 버튼으로 즉시 취소 가능
-- **전체 통과 시**: 해당 문제 id가 localStorage + (회원이면) 서버에 기록 + "🏠 문제 선택으로" 버튼 노출
-- **시간 초과 감지**: 무한 반복 등 타임아웃 시 오답 처리 (기본 5초, 케이스별 설정 가능)
-- **오류 감지**: 실행 중 경고(빨간색 블록) 발생 시 오류 처리
-- **채점 중 보호**: 키보드 입력 차단, 엔진 시작/정지 버튼 차단
+### `.ent` 내보내기
 
-### 입출력 지원
-| 입력 방식 | 출력 방식 |
-|----------|----------|
-| 없음 (고정 출력) | 말하기 (`say`) |
-| 변수 (`setup.variables`) | 변수 최종값 (`expected.variables`) |
-| 리스트 (`setup.lists`) | 리스트 최종값 (`expected.lists`) |
-| 묻고 기다리기 (`대답`) | 복합 (say + 변수 + 리스트) |
+현재 프로젝트와 same-origin 이미지·소리 자산을 브라우저에서 Entry 호환 gzip tar로 묶습니다.
 
-### 파이썬 모드 호환
-- 블록/파이썬 양쪽 모드에서 동일하게 채점
-- 파이썬 모드의 변수/리스트 하드코딩 문제를 자동 재적용으로 해결
+- 서버 업로드 없음
+- SVG 원본과 PNG 래스터 이미지 생성
+- 96px PNG 썸네일 생성
+- 결과물을 `code205-YYYYMMDD-HHMMSS.ent`로 다운로드
 
-### 묻고 기다리기 자동 응답
-- `tests.json`에 `"대답": "값"` 설정 시 채점 중 자동 입력
-- 캔버스 기반 입력 필드를 감지하여 `Entry.container.setInputValue()` 호출
+내보낸 파일은 playentry.org의 “오프라인 작품 불러오기”에서 실제 동작하는 것을 수동 확인했습니다. 내보내기 형식을 변경할 때는 같은 절차로 다시 검증합니다.
 
-### 에디터 기능
-- **실행취소/다시실행**: 헤더 버튼 + Ctrl+Z / Ctrl+Shift+Z
-- **초기화**: 프로젝트를 원래 상태로 복원 (확인 다이얼로그 포함)
-- **블록/파이썬 모드 전환**: 헤더 버튼
-- **스프라이트 카탈로그**: 로컬 번들 SVG/PNG 스프라이트, 문제별 필터링. "오브젝트 추가하기" 팝업에 마스코트 **205봇**(idle/walk-1/walk-2/hello 4개 모양 묶음)이 포함됨
-- **내 컴퓨터에 저장하기**: 현재 작품을 `.ent` 파일로 다운로드
-  - 서버가 자산(이미지·소리)을 엔트리 공식 포맷(`temp/<aa>/<bb>/(image|thumb|sound)/<hash>.<ext>`)으로 재번들
-  - SVG는 `sharp`로 PNG 래스터 + 96px 썸네일도 함께 번들 (엔트리 업로드 파이프라인 호환)
-  - 다운로드한 `.ent`를 `playentry.org` → 작품 만들기 → 파일 → 오프라인 작품 불러오기로 업로드 가능
+### 작품 합치기
 
-### 비활성화된 기능
-알고리즘 플랫폼에 불필요하거나 서버 의존적인 기능을 비활성화:
-- 블록 카테고리: 데이터 분석, 인공지능, 확장, 하드웨어
-- 나만의 보관함, 오브젝트 내보내기, 블록 이미지 저장
-- 모양/소리 편집기 (목록은 유지)
-- 팝업 파일 올리기/새로 그리기/글상자/검색
+`/merge/`에서 여러 `.ent` 파일을 브라우저 안에서 병합합니다.
 
-## 디렉터리 구조
+- 파일당 50MB, 전체 150MB, 최대 10개
+- 장면 ID 충돌 방지
+- 오브젝트·변수·리스트 재귀 병합
+- 대답·초시계 중복 제거
+- gzip tar 결과 다운로드
 
-```
-CODE-205/
-├── src/                          # 백엔드 (모듈 분리)
-│   ├── server.js                 # 진입점 (HTTP server + Express)
-│   ├── app.js                    # Express 앱 팩토리
-│   ├── config.js                 # 환경변수·상수
-│   ├── db/
-│   │   ├── init.js               # better-sqlite3 싱글톤
-│   │   ├── schema.sql            # users / solutions / submissions / sync_projects / sync_usage
-│   │   └── userScoped.js         # user_id FK 테이블 공용 헬퍼 (행 수·일괄 삭제)
-│   ├── routes/
-│   │   ├── _respond.js           # fail() + errorHandler 응답 헬퍼
-│   │   ├── seo.js                # /sitemap.xml
-│   │   ├── problems.js           # /api/problems/*
-│   │   ├── sprites.js            # /api/sprites
-│   │   ├── export.js             # /api/export
-│   │   ├── auth.js               # /api/auth/{signup,login,logout,me}
-│   │   └── me.js                 # /api/me/{,solved,submissions,password}
-│   ├── services/
-│   │   ├── problemService.js
-│   │   ├── spriteService.js
-│   │   ├── assetService.js
-│   │   ├── userService.js
-│   │   ├── authService.js        # 검증 + bcrypt + AuthError
-│   │   ├── solutionService.js
-│   │   └── submissionService.js
-│   └── middleware/
-│       ├── auth.js               # requireAuth / optionalAuth
-│       └── rateLimit.js          # login / signup limiter
-├── ecosystem.config.js           # PM2 프로세스 정의
-├── package.json                  # scripts: start / test
-├── .env.template                 # 환경변수 템플릿
-├── PROBLEM_GUIDE.md              # 문제 출제 가이드라인
-├── .github/workflows/
-│   └── deploy.yml                # CI: 테스트 통과 시 자동 배포
-├── problems/                     # 문제 데이터 (NNN/ 3자리 0패딩, 100문제)
-│   └── NNN/
-│       ├── meta.json             # 제목, 난이도, 카테고리(sample/tutorial), sprites
-│       ├── description.md        # Markdown 문제 설명
-│       ├── tests.json            # 테스트/채점 케이스
-│       ├── project.ent           # 기본 프로젝트 (선택)
-│       └── solution.txt          # 모범답안 파이썬 (권장)
-├── public/
-│   ├── index.html                # 메인 화면
-│   ├── editor.html               # Entry 블록 코딩 에디터
-│   ├── login.html / signup.html  # 회원 인증 폼
-│   ├── profile.html              # 프로필 페이지 (6섹션)
-│   ├── contribute.html / privacy.html / terms.html
-│   ├── merge.html                # 작품 합치기 도구 (/merge, 클라이언트 사이드)
-│   ├── css/
-│   │   ├── common.css            # 정적 페이지 공통 (헤더·푸터·user-menu)
-│   │   ├── auth.css              # 로그인·가입 폼
-│   │   ├── profile.css           # 프로필 카드·통계 그리드
-│   │   ├── index.css / editor.css / contribute.css / merge.css
-│   ├── js/
-│   │   ├── common-header.js      # 헤더 user-menu 동적 주입
-│   │   ├── common-footer.js      # disclaimer 푸터
-│   │   ├── auth-page.js          # signup/login 폼 처리
-│   │   ├── profile-page.js       # 프로필 4섹션 통합
-│   │   ├── solved-sync.js        # localStorage ↔ 서버 양방향 병합
-│   │   ├── submission-sync.js    # 정답 코드 저장·복원
-│   │   ├── index.js              # 메인 화면 스크립트
-│   │   ├── editor.js             # 에디터 통합 로직
-│   │   ├── editor-pure.js        # 순수 함수 (테스트 대상)
-│   │   └── merge/                # 작품 합치기: pako·tar·merge-engine·merge-app
-│   ├── sprites/                  # 로컬 스프라이트 카탈로그
-│   └── lib/                      # Entry 라이브러리 (로컬 번들, ~64MB)
-├── db/                           # 런타임 SQLite 파일 (gitignored)
-├── logs/                         # PM2 출력 로그 (gitignored, pm2-logrotate로 회전)
-└── tests/                        # node:test 단위·통합 테스트 (236개)
-    ├── format.test.js / lists.test.js / markdown.test.js / evaluate.test.js
-    ├── userService.test.js / authService.test.js / auth.routes.test.js
-    ├── solutionService.test.js / submissionService.test.js
-    ├── me.routes.test.js
-    ├── db.init.test.js          # 스키마 마이그레이션 baseline 검증
-    ├── csp.test.js
-    └── merge.test.js          # 작품 합치기 엔진·라우트
+## 정적 빌드
+
+`tools/build-pages.js`가 다음 작업을 수행합니다.
+
+1. `public/`을 `_site/`로 복사
+2. 서버 전용 회원·상태 파일과 사용하지 않는 온라인 서비스 라이브러리를 Pages 산출물에서 제외
+3. `problems/NNN/project.ent`의 `project.json`과 자산 추출
+4. 자산을 SHA-256 이름의 `/data/assets/` 공유 풀로 중복 제거
+5. 문제별 `problem.json`, `tests.json`, `project.json` 생성
+6. `/data/problems.json`, `sitemap.xml`, `.nojekyll` 생성
+7. `/merge/`, `/Status` 및 이전 회원 URL의 호환 페이지 생성
+8. 모든 HTML에 same-origin Content Security Policy 삽입
+9. 2026년 7월 31일까지 모든 HTML에 서비스 전환 공지 삽입
+
+산출물 개요:
+
+```text
+_site/
+├── index.html
+├── editor.html
+├── merge/
+│   └── index.html
+├── data/
+│   ├── problems.json
+│   ├── problems/001/{problem,tests,project}.json
+│   └── assets/<sha256>.<ext>
+├── sprites/
+├── images/
+├── lib/
+├── css/
+└── js/
 ```
 
-## 프로젝트 지식
+정적 런타임 경로:
 
-프로젝트 전용 구현/운영 지식은 [`지식/`](지식/README.md)에 정리합니다.
+| 경로 | 내용 |
+| --- | --- |
+| `/data/problems.json` | 문제 목록 |
+| `/data/problems/NNN/problem.json` | 메타데이터·설명·스프라이트 제한·테스트 존재 여부 |
+| `/data/problems/NNN/tests.json` | 공개·제출 테스트 |
+| `/data/problems/NNN/project.json` | 빌드 시 추출된 Entry 프로젝트 |
+| `/data/assets/*` | 문제 간 중복 제거된 프로젝트 자산 |
+| `/sprites/catalog.json` | 로컬 스프라이트 카탈로그 |
 
-- EntryJS API와 `.ent` 포맷 참고: [`지식/entry-reference/`](지식/entry-reference/README.md)
-- 기능별 설계와 구현 메모: [`지식/기능/`](지식/기능/README.md)
-- 운영 서버, PM2, DB, 장애 대응: [`지식/운영/`](지식/운영/README.md)
-- 문제 제작 내부 메모: [`지식/문제제작/`](지식/문제제작/README.md)
+`solution.txt`와 원본 `.ent`는 정적 사이트에 배포하지 않습니다.
 
-공개 기여자 문서인 `PROBLEM_GUIDE.md`와 라이선스/상표 안내인 `NOTICE.md`는 외부 링크 보존을 위해 루트에 둡니다.
+## GitHub Pages 배포
+
+`.github/workflows/pages.yml`:
+
+```text
+main push
+  → npm ci
+  → npm test
+  → npm run build:pages
+  → upload-pages-artifact
+  → deploy-pages
+```
+
+저장소 Settings → Pages의 Source를 **GitHub Actions**로 설정하고 custom domain을 `code.205.kr`로 별도 등록해야 합니다. Actions 기반 Pages 배포에서는 산출물의 `CNAME` 파일이 무시되므로 빌드에서 생성하지 않습니다. 자세한 동작은 [GitHub의 custom domain 설정 문서](https://docs.github.com/en/pages/configuring-a-custom-domain-for-your-github-pages-site/managing-a-custom-domain-for-your-github-pages-site)를 기준으로 합니다.
+
+앱 자산 경로가 `/data`, `/lib`, `/css`처럼 origin 루트 기준이므로 `https://<account>.github.io/<repository>/` 형태의 프로젝트 URL은 시험 주소로 사용할 수 없습니다. 로컬 `npm run preview:pages` 또는 origin 루트에 배포되는 별도 시험 도메인에서 검증합니다. 저장소 Pages 설정에 custom domain이 등록되면 기본 `github.io` 주소는 커스텀 도메인으로 리디렉션될 수 있습니다.
+
+DNS를 변경하기 전에 GitHub 계정의 Pages 설정에서 도메인 소유권을 TXT 레코드로 검증하고, 저장소의 custom domain 등록을 먼저 완료합니다. 검증 TXT 레코드는 전환 후에도 유지합니다.
+
+Oracle 배포 워크플로와 `DEPLOY_HOST`, `DEPLOY_KEY`, `DEPLOY_USER` 비밀정보는 제거합니다. `pre-pages-migration` 태그는 전환 이전 소스의 식별 기준일 뿐, 삭제한 회원·제출 데이터를 복구하지 않습니다. Pages 전환 후에도 Oracle 인스턴스 자체는 다른 용도로 유지합니다.
+
+### 정적 호스팅의 보안 헤더 제약
+
+빌드가 모든 HTML에 meta CSP를 삽입해 외부 연결과 외부 실행 자산을 제한합니다. 다만 meta CSP는 응답 헤더 CSP와 완전히 같지 않고 `frame-ancestors`를 적용할 수 없으며, HSTS 같은 응답 헤더도 설정하지 못합니다. 편집기는 EntryJS 동작을 위해 `unsafe-eval`과 `blob:` 스크립트를 허용합니다. GitHub의 **Enforce HTTPS**를 활성화하고, 강한 프레임 차단이나 더 엄격한 응답 헤더가 필요하면 헤더를 제어할 수 있는 CDN 또는 다른 정적 호스팅 계층을 사용해야 합니다.
 
 ## 문제 추가
 
-`PROBLEM_GUIDE.md`에 상세한 출제 가이드라인이 있습니다.
+1. `problems/NNN/` 디렉터리를 만듭니다.
+2. `meta.json`, `description.md`, `tests.json`을 작성합니다.
+3. 필요하면 `project.ent`와 검토용 `solution.txt`를 추가합니다.
+4. 정적 빌드와 테스트를 실행합니다.
 
-간단 요약:
+```bash
+npm run build:pages
+npm test
+npm run preview:pages
+```
 
-1. `problems/NNN/` 디렉터리 생성 (3자리 0패딩)
-2. `meta.json` 작성: `{ "title": "제목", "difficulty": 2 }`
-3. `description.md` 작성: 문제 설명 / 입력 / 출력 / 예시 / 힌트
-4. `tests.json` 작성: `test` (공개) + `submit` (숨김) 케이스
-5. `project.ent` (선택): playentry.org에서 내보낸 기본 프로젝트
-6. `solution.txt` (권장): 모범답안 파이썬 코드 — 리뷰·검증용
+자세한 작성 규칙은 [PROBLEM_GUIDE.md](PROBLEM_GUIDE.md)를 참고하세요.
 
-**서버 재시작 불필요** — 파일 추가/수정 후 브라우저 새로고침으로 즉시 반영.
-
-## API
-
-### 문제·자산
-| 엔드포인트 | 설명 |
-|-----------|------|
-| `GET /api/problems` | 전체 문제 목록 `[{id, title, difficulty, category}]` |
-| `GET /api/problems/:id/meta` | 문제 제목 + 설명 |
-| `GET /api/problems/:id/tests?mode=test\|submit` | 테스트 케이스 |
-| `GET /api/problems/:id/has-tests` | 테스트 존재 여부 |
-| `GET /api/problems/:id` | 프로젝트 데이터 (`.ent`에서 추출, fileurl 자동 리라이트) |
-| `GET /api/problems/:id/asset/*` | `.ent` 내부 자산 온디맨드 서빙 (tar에서 꺼냄) |
-| `GET /api/sprites` | 전체 스프라이트 카탈로그 |
-| `GET /api/sprites?problem=N` | 문제별 스프라이트 필터링 |
-| `POST /api/export` | 현재 작품 JSON을 받아 엔트리 호환 `.ent`로 재번들 (내 컴퓨터에 저장하기) |
-
-### 인증 (`/api/auth/*`)
-| 엔드포인트 | 설명 |
-|-----------|------|
-| `POST /api/auth/signup` | 가입 + 자동 로그인. body: `{ username, password, birthYear, email?, displayName? }` |
-| `POST /api/auth/login` | 로그인. body: `{ username, password }` |
-| `POST /api/auth/logout` | 세션 종료 |
-| `GET /api/auth/me` | 현재 사용자 정보 또는 `{ user: null }` |
-
-### 회원 본인 데이터 (`/api/me/*`, requireAuth)
-| 엔드포인트 | 설명 |
-|-----------|------|
-| `GET /api/me` | 현재 사용자 정보 (alias) |
-| `PATCH /api/me` | 이메일·표시이름 부분 갱신 |
-| `POST /api/me/password` | 비밀번호 변경 (현재 비밀번호 재확인) |
-| `DELETE /api/me` | 계정 삭제 (비밀번호 재확인) — solutions·submissions 자동 정리 |
-| `GET /api/me/solved` | 풀이 ID 배열 |
-| `POST /api/me/solved/:id` | 풀이 등록 (멱등) |
-| `DELETE /api/me/solved/:id` | 단건 제거 |
-| `DELETE /api/me/solved` | **전체 일괄 삭제** |
-| `GET /api/me/submissions` | 제출 미리보기 목록 (코드 본문 제외, code_size만) |
-| `GET /api/me/submissions/:id` | 단건 전체 코드 |
-| `POST /api/me/submissions/:id` | 코드 저장 (덮어쓰기, 100KB 한도) |
-| `DELETE /api/me/submissions/:id` | 단건 제거 |
-| `DELETE /api/me/submissions` | **전체 일괄 삭제** |
-
-## 개발
-
-### 테스트
-
-순수 함수와 모든 인증·데이터 라우트가 Node 내장 `node:test`로 단위·통합 테스트되어 있습니다.
+## 테스트
 
 ```bash
 npm test
 ```
 
-전체 테스트가 통과해야 배포 가능.
+기존 서버 회귀 테스트와 함께 다음 정적 빌드 보장을 검사합니다.
 
-### CI/CD 파이프라인
+- 문제 100개 산출
+- 모든 문제 데이터 파일 존재
+- `project.json`의 자산 참조 무결성과 외부 HTTP 자산 부재
+- 사용하지 않는 Entry 온라인 서비스 번들의 Pages 산출물 제외와 필수 로컬 어댑터 보존
+- 모든 HTML의 same-origin CSP와 편집기 네트워크 가드
+- 외부 실행 스크립트·스타일 부재
+- Pages HTML·앱 JS의 서버 API 호출 잔재 없음
+- HTML의 로컬 스크립트·스타일 참조 무결성
+- 서버·DB·비밀정보·`solution.txt`의 Pages 산출물 유출 방지
+- Oracle 배포 워크플로와 SSH 연결 정보 부재
+- `.nojekyll`, `/merge/`, 이전 URL 안내 페이지 존재 및 무효한 `CNAME` 산출물 부재
+- 사이트맵 문제 URL 완전성
 
-`main` 브랜치 push 또는 `workflow_dispatch` 수동 트리거 시 GitHub Actions 실행 (`.github/workflows/deploy.yml`):
+## 디렉터리
 
-```
-push → [ test ] ──(needs: test)──▶ [ deploy ] ──▶ [ health check ] → live
-       npm ci                       git pull                HTTP 200 확인
-       npm test                     npm install --omit=dev
-       ~15초                        pm2 startOrReload ecosystem.config.js
-                                    pm2 save
-                                    ~10초
-```
-
-- **총 소요**: ~25초
-- **동시 배포 방지**: `concurrency: deploy-production`
-- **SSH 인증**: 전용 ed25519 배포 키 (GitHub Secrets `DEPLOY_KEY`)
-- **롤백**: `git revert <commit> && git push` → 자동 재배포
-
-### 운영 인프라
-
-| 계층 | 구성 | 비고 |
-|------|------|------|
-| 컴퓨트 | Oracle Cloud ARM A1 Flex (2 OCPU / 12 GB) | Always Free |
-| OS | Ubuntu 22.04 LTS | |
-| Node | 20 LTS (NodeSource) | better-sqlite3 native addon |
-| 빌드 도구 | build-essential + python3-dev | native 모듈 컴파일용 |
-| DB | SQLite (better-sqlite3) | `db/data.db`, WAL 모드 |
-| 세션 store | connect-sqlite3 | 같은 DB 파일 안 sessions 테이블 |
-| 리버스 프록시 | Nginx 1.18 (gzip, rate limit) | TLS 종료 |
-| SSL | Let's Encrypt + certbot | 60일 자동 갱신 |
-| 프로세스 관리 | PM2 6 + `ecosystem.config.js` | `min_uptime`/`max_restarts`/`restart_delay`로 시작 실패 무한 루프 방어 |
-| 로그 회전 | `pm2-logrotate` 모듈 | `logs/entry-*.log` 10MB 단위 + 7개 retain + 매일 자정 |
-| 모니터링 | PM2 logs, Nginx access/error logs | — |
-| 예산 | OCI Budget $1, alert at 1% | 1원 과금 즉시 이메일 |
-
-## 보안
-
-### 애플리케이션 레이어
-- **XSS 방어**: 모든 문자열은 `escapeHtml`/`renderMarkdown`을 거쳐 렌더링. 사용자 입력, 문제 이름, 오류 메시지 포함
-- **자동 XSS 회귀 테스트** 5종 (`npm test`)
-- **CSP (Content Security Policy)**: 정적 페이지에 strict 정책 적용
-  - `default-src 'self'`, 외부 도메인 일절 미허용, `'unsafe-inline'`/`'unsafe-eval'` 부재
-  - `frame-ancestors 'none'` (clickjacking 방어), `object-src 'none'` (plugin 차단)
-  - editor.html과 `/lib/*`은 Entry 런타임 호환을 위해 비활성 (path 기반 분기)
-- **비밀번호 저장**: bcrypt cost 10 해시. 평문 미보관, 운영자도 조회 불가
-- **세션 쿠키**: `httpOnly` (XSS 방어) + `sameSite=lax` (CSRF 방어) + `secure` (HTTPS 전용) + 7일
-- **Rate-limit**: 가입·로그인 엔드포인트에 IP 기준 횟수 제한
-- **입력 검증**: 모든 사용자 입력은 형식·길이 검증 후 prepared statement로 처리. SQL 인젝션 차단
-- **Path Traversal 차단**: `isValidId` 정규식(`/^\d+$/`)으로 숫자 문제 id만 허용 → `../` 조작 불가
-- **전체 삭제 시**: 데이터베이스 외래키 ON DELETE CASCADE로 회원 탈퇴 시 풀이·제출 데이터 모두 즉시 정리
-
-### Nginx 서버 하드닝
-```
-Strict-Transport-Security: max-age=31536000; includeSubDomains
-X-Content-Type-Options:    nosniff
-X-Frame-Options:           SAMEORIGIN
-Referrer-Policy:           strict-origin-when-cross-origin
-Server:                    nginx                       (버전 은닉)
+```text
+CODE-205/
+├── .github/workflows/
+│   └── pages.yml              # GitHub Pages 빌드·배포
+├── problems/                  # 문제 원본(SSOT)
+├── public/                    # 정적 프런트 원본
+├── tools/
+│   ├── build-pages.js         # Pages 산출물 생성
+│   └── serve-pages.js         # 로컬 정적 미리보기
+├── tests/
+├── src/                       # 과거 Express 백엔드(배포하지 않음)
+├── db/                        # 로컬 테스트용 SQLite 위치(gitignored)
+├── ecosystem.config.js        # 과거 PM2 설정(배포하지 않음)
+└── _site/                     # 생성 산출물(gitignored)
 ```
 
-- **Rate Limiting**
-  - 일반: 30 req/s per IP, burst 100
-  - API: 10 req/s per IP, burst 30
-  - 초과 시 HTTP 429 Too Many Requests
-  - DDoS / 크롤러로 인한 대역폭 고갈 방지
-
-### 시스템 레이어
-- **SSH 강화**
-  - Password 인증 비활성화 (키 인증 전용)
-  - `fail2ban` — 5회 실패 시 10분 자동 차단
-  - 승인된 키 2개만 (개인 + GitHub Actions 배포 전용)
-- **방화벽**
-  - OCI Security List: 22/80/443만 공개
-  - iptables: 동일 포트 외 전부 REJECT
-- **TLS 1.2 / 1.3만 허용** (SSLv3, TLS 1.0/1.1 차단)
-- **불필요 서비스 비활성화**: `rpcbind` (NFS 미사용, CVE-2017-8779 등 공격면 제거)
-- **최소 권한 실행**: Node.js가 `root`가 아닌 `ubuntu` 유저로 동작
-
-### 비밀 관리
-- SSH 개인키, 배포 키: `.gitignore`로 커밋 차단 (`*.key`, `*.pem`, `deploy-key*`)
-- GitHub Secrets로 CI 크레덴셜 주입 (`DEPLOY_KEY`, `DEPLOY_HOST`, `DEPLOY_USER`)
-- Actions 로그에는 `***`로 마스킹되어 출력
-- `SESSION_SECRET`: production 서버의 `.env`에 강한 무작위 값으로만 보관 (저장소 외부)
-
-## 기술 스택
-
-- **Frontend**: EntryJS v4.0.22 (엔트리 블록 코딩 엔진)
-- **Backend**: Node.js ≥ 20 + Express + helmet + express-session + express-rate-limit
-- **DB**: SQLite (better-sqlite3, WAL 모드) + connect-sqlite3 세션 store
-- **인증**: bcryptjs (cost 10) + 세션 쿠키 (httpOnly + sameSite=lax + secure)
-- **Entry 라이브러리**: entry-js, entry-tool, entry-paint, entry-lms, sound-editor, legacy-video
-- **테스트**: `node:test` (내장) + TAP + 임시 파일 DB 격리 + MemoryStore
-- **CI/CD**: GitHub Actions → SSH deploy
-- **오프라인 대응**: Entry 관련 라이브러리는 `public/lib/`에 로컬 번들링. jQuery, React 등 범용 라이브러리만 CDN 사용.
+프로젝트별 구현·운영 기록은 [지식/](지식/README.md)에 보관합니다.

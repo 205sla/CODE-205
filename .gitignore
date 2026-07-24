@@ -28,3 +28,7 @@ db/*
 # PM2 log files — ecosystem.config.js가 logs/entry-*.log로 출력
 logs/*
 !logs/.gitkeep
+
+# GitHub Pages build output (Actions가 매번 재생성)
+_site/
+.tmp-pages-test-*/

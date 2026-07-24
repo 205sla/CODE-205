@@ -174,15 +174,16 @@ git checkout -b add-problem-017</code></pre>
                 <p>예: <code>problems/017/</code> 폴더를 만들고 <code>meta.json</code>, <code>tests.json</code>, <code>description.md</code>를 작성.</p>
             </li>
             <li>
-                <strong>로컬에서 실제 동작 확인</strong>
-<pre><code>npm install
-npm start</code></pre>
-                <p>브라우저에서 <code>http://localhost:3000</code>을 열어 목록에 새 문제가 보이는지, 블록을 조립해서 <b>테스트하기</b>·<b>제출하기</b>가 통과하는지 확인.</p>
+                <strong>정적 사이트 빌드 후 실제 동작 확인</strong>
+<pre><code>npm ci
+npm run build:pages
+npm run preview:pages</code></pre>
+                <p>브라우저에서 <code>http://127.0.0.1:4173</code>을 열어 목록에 새 문제가 보이는지, 블록을 조립해서 <b>테스트하기</b>·<b>제출하기</b>가 통과하는지 확인.</p>
             </li>
             <li>
                 <strong>단위 테스트 실행</strong>
 <pre><code>npm test</code></pre>
-                <p>기존 57개 테스트가 모두 통과해야 합니다. 채점 엔진을 건드리지 않았다면 자연스럽게 통과.</p>
+                <p>기존 회귀 테스트와 정적 빌드 무결성 테스트가 모두 통과해야 합니다.</p>
             </li>
             <li>
                 <strong>커밋 + 푸시</strong>
@@ -202,7 +203,7 @@ git push origin add-problem-017</code></pre>
             </li>
             <li>
                 <strong>리뷰 → 머지 → 자동 배포</strong>
-                <p>유지보수자가 리뷰 후 머지합니다. 머지되는 순간 GitHub Actions가 자동으로 테스트를 돌리고 <code>code.205.kr</code>에 반영됩니다. 약 20초 후 실서비스에서 확인 가능.</p>
+                <p>유지보수자가 리뷰 후 머지하면 GitHub Actions가 테스트와 정적 빌드를 실행한 뒤 GitHub Pages에 배포합니다.</p>
             </li>
         </ol>
 
@@ -237,9 +238,6 @@ git push origin add-problem-017</code></pre>
         </ul>
     </main>
 
-    <script src="js/dom-escape.js"></script>
-    <script src="js/api.js"></script>
-    <script src="js/common-header.js"></script>
     <script src="js/common-footer.js"></script>
 </body>
 </html>
