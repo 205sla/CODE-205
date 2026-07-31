@@ -120,4 +120,58 @@ public/lib/vendor/
 - **vendor 파일은 git 커밋 대상** (gitignore 제외 아님). 기존 entry-js와 동일 정책.
 - **다운로드 시 함정**: playentry의 죽은 경로는 404 대신 **SPA HTML(`<!DOCTYPE html>...`)을 200으로 반환**한다. 크기만 보면 정상처럼 보이니, 받은 파일의 **첫 바이트가 `<!DOCTYPE`/`<html`인지 반드시 확인**. (jshint가 이 함정에 걸렸음.)
 
+---
+
+## 7. 벤더된 EntryJS 사본의 버전 기준 (갱신 이력)
+
+`public/lib/entry-js/`는 업스트림이나 npm을 참조하지 않는 **바이트 사본**(git 추적 769파일)이다.
+장점은 CDN 독립이고, 대가는 **업스트림 버그픽스를 자동으로 받지 못한다**는 것이다.
+재벤더링할 때마다 아래 표에 어떤 커밋·릴리스 기준인지 남긴다.
+
+| 벤더링 시점 | 기준 | 확인 방법 |
+| --- | --- | --- |
+| 2026-04-14 (현행) | 4월 빌드 (npm `@entrylabs/entry` 4.0.20 계열) | 아래 심볼 대조 |
+
+### 2026-07-31 실측 — 4.56.0 대비 격차
+
+playentry.org 실서비스에는 7월 수정(EntryJS 4.56.0)이 배포됐지만, 우리 사본에는 없다.
+
+| 심볼 | 실서비스 번들 | 우리 사본 |
+| --- | --- | --- |
+| `sanitizeCoordinate` (변수 좌표 ±10000 clamp) | 있음 | **0건** |
+| `runWithScrollPreserved` (모양·소리 목록 스크롤 보존) | 있음 | **0건** |
+| `_bindInputFieldFullScreenChange` (전체화면 대답 입력) | 있음 | **0건** |
+| `codingboxv2` (신규 하드웨어) | 있음 | **0건** |
+
+7월 수정만 빠진 게 아니다. **5월 29일 prototype pollution Stored XSS 픽스(`668c3d6f8`, 6월 2일
+PR #3073으로 머지)도 없다** — 번들의 해당 함수가 정규화 없는 옛 형태다.
+
+```
+$ grep -o 'ilterReservedKeywords[^}]*}' public/lib/entry-js/dist/entry.min.js
+ilterReservedKeywords",value:function(t){return e._reservedKeywords.has(t)?"":t}}
+                                              ^ 배열/객체를 String() 으로 정규화하는 단계가 없음
+```
+
+업스트림 현재 코드는 `typeof param === 'object'`일 때 `String(param)`으로 정규화한 뒤 조회한다.
+정규화가 없으면 `["__proto__"]` 같은 배열을 파라미터로 넘겨 예약어 필터를 우회할 수 있다.
+CODE 205는 에디터를 문제 풀이용으로 쓰고 작성자 본인만 자기 블록을 실행하므로 저장형 XSS의
+전달 경로(남의 작품을 열어보는 흐름)가 약하지만, **재벤더링 시 가장 먼저 확인할 항목**이다. — 문제 100개(변수 335개)의 좌표를 전수 실측한 결과 clamp 한계
+`±10000`을 넘는 값이 0건이고, merge 엔진의 숨김 좌표 `2050`도 한계 안쪽이다. 즉 재벤더링해도
+데이터 측 동작 변화가 없다.
+
+**언제 문제가 되나**: 좌표로 변수 표시창을 화면 밖에 숨긴 **외부 작품**을 에디터로 열 때.
+playentry.org에서는 clamp돼 화면에 나타나지만 우리 에디터에서는 숨은 채로 보인다 —
+"code.205.kr에서만 다르게 보인다"의 원인이 될 수 있다. 우리가 만든 문제는 이 기법을 쓰지 않는다.
+
+**해소 조건**: 이 사본은 바이트 복사라 자동 갱신 경로가 없다. 업스트림 수정을 받으려면 수동
+재벤더링이 필요하고, 그때 아래 두 항목을 확인한다.
+
+1. **`runWithScrollPreserved`가 우리 CSS와 겹칠 수 있다.** `public/css/editor.css:440-447`이
+   모양·소리 패널을 `width:250px !important; overflow-y:auto`로 덮어쓴다. 업스트림 유틸은
+   `.rcs-inner-container`의 `scrollTop`만 보존하므로, 스크롤 소유권이 우리 CSS로 넘어가 있으면
+   수정 효과가 안 날 수 있다. 정적 CSS 분석으로는 확정되지 않았고 **브라우저 확인이 필요**하다.
+2. 위 표에 기준 커밋을 반드시 기록한다.
+
+전체 변경 목록과 판정 근거: [`upstream/지식/entryjs-4.56.0-2026-07-update.md`](../../../../upstream/지식/entryjs-4.56.0-2026-07-update.md)
+
 > 관련: [[01-setup.md]](./01-setup.md) (의존성), [[06-init-options.md]](./06-init-options.md) (비활성 기능 옵션), 메모리 `editor-cdn-dependency-risk`.

@@ -41,7 +41,7 @@
 | [08b-eo-generator-prompt.md](./08b-eo-generator-prompt.md) | 위 명세로 Chrome 확장(다량 모양 업로더)을 만들 AI에게 줄 프롬프트 | — |
 | [08c-eo-format-errata.md](./08c-eo-format-errata.md) | `.eo` 명세 정정문 (imageType png/svg 한정·SVG 3파일·regX 소수점·BMP 미지원) | 역공학 (정상 표본) |
 | [09-engine-and-grading.md](./09-engine-and-grading.md) | `Entry.engine` 상태머신(stop/stopping/run/pause)·toggleStop 비동기 race·자동 채점 흐름 | 역공학 + 우리 구현 |
-| [10-offline-and-vendoring.md](./10-offline-and-vendoring.md) | 에디터 외부 CDN 20개 로컬 vendoring·2026-05 CDN 장애·오프라인 검증법 | 우리 구현 |
+| [10-offline-and-vendoring.md](./10-offline-and-vendoring.md) | 에디터 외부 CDN 20개 로컬 vendoring·2026-05 CDN 장애·오프라인 검증법·**벤더 EntryJS 사본의 버전 기준(§7)** | 우리 구현 |
 
 ## 우리 프로젝트에서의 현재 적용 현황
 
