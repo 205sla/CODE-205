@@ -175,3 +175,39 @@ playentry.org에서는 clamp돼 화면에 나타나지만 우리 에디터에서
 전체 변경 목록과 판정 근거: [`upstream/지식/entryjs-4.56.0-2026-07-update.md`](../../../../upstream/지식/entryjs-4.56.0-2026-07-update.md)
 
 > 관련: [[01-setup.md]](./01-setup.md) (의존성), [[06-init-options.md]](./06-init-options.md) (비활성 기능 옵션), 메모리 `editor-cdn-dependency-risk`.
+
+## 8. CODE 205 안에 임베드한 편집기의 분할선 보정 (2026-10-13)
+
+**등급 B · 현행 2026-04-14 벤더 사본 · 소스 분석과 Chromium 재현으로 확인.**
+
+벤더 `Entry.PropertyPanel._initializeSplitter`는 `clientX`를 그대로 `canvasWidth`에
+넣는다. CODE 205에서는 문제 패널 때문에 워크스페이스가 오른쪽으로 이동해 있어,
+왼쪽으로 당겨도 실행 영역이 최대 640px로 커지거나 그 크기에 고정됐다.
+또한 벤더 CSS의 `.entry { min-width:1024px }`와 호스트의 `overflow:hidden`이
+겹쳐 1280px 창에서도 오른쪽 112px이 잘렸다.
+
+보정은 [editor-layout.js](../../public/js/editor-layout.js)에 둔다. Entry 초기화 뒤
+해당 손잡이의 기존 `mousedown/touchstart`만 해제하고 Pointer Events로 교체한다.
+너비는 **드래그 시작 너비 + clientX 이동량**으로 계산한다. 매 이동마다
+`Entry.resizeElement`를 호출해 실행 화면, 캔버스, 오브젝트 목록, 블록 영역과
+좌표 캐시를 함께 갱신하며, `interfaceState`의 다른 필드는 보존한다.
+최소 크기 아래로 당겨 실행 영역을 접고 손잡이를 클릭해 다시 여는 동작도 유지한다.
+
+[editor.css](../../public/css/editor.css)와 레이아웃 모듈이 현재 블록 메뉴 너비와
+블록 작업 영역 최소 240px을 고려해 실행 영역과 문제 패널의 최대 너비를 제한한다.
+기본 블록 탭의 최소 워크스페이스는 877px(실행 영역 324 + 메뉴 313 + 작업 영역 240)이다.
+창이 이보다 좁으면 워크스페이스에 가로 스크롤을 제공한다. `ResizeObserver`는
+창 크기, 문제 패널, 프로젝트 로드, 모양/소리/속성 탭으로 인한 레이아웃 변화를 반영한다.
+
+검증:
+
+- `node --test tests/editor-layout.test.js`: 9개 통과. 실제 설치한 이벤트 핸들러의
+  좌표 보정, 드래그 취소/포커스 이탈, 상태 보존, 접기/펼치기와 너비 제한을 검사한다.
+- 전체 테스트 275개 통과, `npm run build:pages` 성공.
+- Chromium에서 1600·1280·1024·768px 창, 두 분할선, 문제/자유 모드,
+  모양 탭, 최대 크기 후 축소, 접기/펼치기, 크기 조절 후 블록 드롭을 확인했다.
+  `pointermove` 중간 단계마다 캔버스·목록·버튼·블록 영역의 너비와 높이를 측정했다.
+  [브라우저 검증 기록](../../../../_review/code205-splitter-20261013/fixed-browser-checks.json).
+
+`public/lib/entry-js` 번들은 수정하지 않았다. 재벤더링 시 손잡이 이벤트와 DOM 클래스,
+`Entry.resizeElement`, `CANVAS_*` 상수의 호환성을 이 검증으로 다시 확인한다.

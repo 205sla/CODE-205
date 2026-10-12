@@ -154,7 +154,7 @@ $(document).ready(function () {
     }
     loadSpriteCatalog(problemId);
     initEntryPopup();
-    initResizableSplitter();
+    Code205EditorLayout.install(Entry);
     initGrading();
     initUndoRedo();
     initReset();
@@ -324,34 +324,6 @@ function hideProblemPanel() {
     document.getElementById('problem-panel').classList.add('hidden');
     document.getElementById('splitter').classList.add('hidden');
     setTimeout(function () { $(window).trigger('resize'); }, CONFIG.RESIZE_AFTER_PANEL_HIDE_MS);
-}
-
-function initResizableSplitter() {
-    var panel = document.getElementById('problem-panel');
-    var splitter = document.getElementById('splitter');
-
-    // Drag to resize (min 40px so the splitter handle stays grabbable)
-    var dragging = false;
-    splitter.addEventListener('mousedown', function (e) {
-        dragging = true;
-        splitter.classList.add('dragging');
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-        e.preventDefault();
-    });
-    document.addEventListener('mousemove', function (e) {
-        if (!dragging) return;
-        var w = Math.max(40, Math.min(800, e.clientX));
-        panel.style.width = w + 'px';
-    });
-    document.addEventListener('mouseup', function () {
-        if (!dragging) return;
-        dragging = false;
-        splitter.classList.remove('dragging');
-        document.body.style.cursor = '';
-        document.body.style.userSelect = '';
-        $(window).trigger('resize');
-    });
 }
 
 // ============================================================
