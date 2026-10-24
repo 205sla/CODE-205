@@ -126,7 +126,7 @@ Entry.engine.toggleStop = function () {
 ### 한 케이스의 실행 (`runSingleTest`)
 
 1. `engineInternalStop()` — 깨끗한 상태에서 시작
-2. `installTestHooks()` — `Entry.Dialog`(say/think 출력 캡처) + `Entry.toast`(경고 캡처) 후킹
+2. `installTestHooks(testCase)` — `Entry.Dialog`(say/think 출력 캡처) + `Entry.toast`(경고 캡처) 후킹, 채점용 대기 가속 설치
 3. `applyTestSetup(setup)` — 변수·리스트 초기값 주입
 4. `engineInternalRun()` — 실행
 5. `applyTestSetup(setup)` **재호출** — 파이썬 모드는 `toggleRun()` 중 code→block 변환하며 변수를 덮어쓰므로 재주입 필요
@@ -157,6 +157,7 @@ chain.then(() => {
 | 상수 | 기본값 | 용도 |
 |---|---|---|
 | `DEFAULT_TEST_TIMEOUT_MS` | 5000 | 케이스별 타임아웃 (testcase.timeout으로 개별 override 가능) |
+| `GRADING_BLOCK_DELAY_MS` | 10 | 채점 중 시간 지정 말하기·생각하기·기다리기의 최대 예약 대기 시간 |
 | `GRADING_POLL_INTERVAL_MS` | 100 | 엔진 완료/타임아웃 폴링 주기 |
 | `POST_STOP_CAPTURE_DELAY_MS` | 300 | 엔진 종료 후 say/think·setValue 정착 대기 |
 | `POST_CAPTURE_EVAL_DELAY_MS` | 50 | 상태 캡처 후 evaluateTest 전 대기 |
@@ -164,6 +165,16 @@ chain.then(() => {
 ---
 
 ## 4. 채점 중 출력 캡처 메커니즘
+
+### 채점용 대기 가속 (2026-10-24)
+
+38번 구구단 2단의 정답은 1초 말하기를 9번 실행하므로 기본 5초 제한에서 시간 초과가 발생했다. 64번 구구단 N단과 여러 줄 출력 문제도 같은 원인이 있다.
+
+`public/js/grading-timing.js`가 케이스마다 `dialog_time`·`wait_second` 블록 실행 함수를 임시로 감싼다. 해당 블록의 동기 실행 중에만 `Entry.engine.setTimeout` 또는 `Entry.TimeWaitManager.add`로 예약하는 유한한 양수 대기를 최대 10ms로 제한한다. 엔진 프레임 간격에 따라 실제 경과 시간은 더 길 수 있다. 다른 블록의 타이머와 채점기의 실제 5초 제한은 유지한다.
+
+`runSingleTest.finish()`의 후킹 복원 경로에서 정답·오답·시간 초과·런타임 경고·채점 중단 모두 원래 블록 함수로 되돌린다. 프로젝트의 블록 값과 파이썬 소스는 수정하지 않으므로 일반 ▶ 실행과 내보내기는 원래 시간을 유지한다. 실제 시간이 정답에 영향을 주는 문제의 `fastDelays: false` 설정은 [문제 작성 가이드](../../PROBLEM_GUIDE.md#타임아웃)를 참고한다.
+
+### 출력과 상태 수집
 
 - **say/think/yell 출력**: `Entry.Dialog`를 래핑해 `sayLog[]`에 누적. `expected.say` 배열과 부분 일치 비교.
 - **경고/오류**: `Entry.toast.warning`/`alert`를 래핑해 첫 경고를 에러 신호로 캡처 (런타임 에러 = 오답).

@@ -26,6 +26,10 @@ var CONFIG = {
     // Kept generous to accommodate Python mode code→block conversion on slow devices.
     DEFAULT_TEST_TIMEOUT_MS: 5000,
 
+    // Cap timed say/think and wait blocks during grading, without editing
+    // the project or shortening the real timeout used to stop infinite loops.
+    GRADING_BLOCK_DELAY_MS: 10,
+
     // How often runSingleTest polls for engine completion (no more executors)
     // or timeout. Too small wastes CPU; too large delays result display.
     GRADING_POLL_INTERVAL_MS: 100,
@@ -576,8 +580,9 @@ function initGrading() {
             GradingState.currentCancel = null;
             try { fn(); } catch (e) {}
         }
-        GradingState.isRunning = false; // release user control over start/stop
-        restoreTurboState();            // restore user's Entry.isTurbo setting
+        // The owning runAllTests chain releases control after stop/drain.
+        // Releasing here lets a new run reset cancelled while the old chain
+        // still has callbacks queued, mixing their hooks and turbo state.
         document.getElementById('grade-overlay').hidden = true;
     });
 
@@ -671,6 +676,9 @@ function restoreTurboState() {
 }
 
 function runAllTests(cases, title, mode) {
+    // Fetches can finish together after rapid test/submit clicks. Claim the
+    // run here, not only in the click handler, to allow exactly one owner.
+    if (GradingState.isRunning) return;
     GradingState.cancelled = false;
     installEngineGuard();
     GradingState.isRunning = true; // block user-initiated start/stop until done or cancelled
@@ -716,7 +724,9 @@ function runAllTests(cases, title, mode) {
             });
         });
     });
-    chain.then(function () {
+    return chain.then(function () {
+        return waitForEngineStop();
+    }).then(function () {
         GradingState.isRunning = false; // release user control once chain fully settles
         restoreTurboState();            // restore user's Entry.isTurbo setting
         if (GradingState.cancelled) return;
@@ -743,9 +753,12 @@ function runAllTests(cases, title, mode) {
 // - Dialog hook captures say/think/yell output into `sayLog`.
 // - toast hook captures the FIRST warning/alert (used as error signal).
 // Returns { sayLog, getWarning, restore } — caller must call restore() exactly once.
-function installTestHooks() {
+function installTestHooks(testCase) {
     var sayLog = [];
     var warning = null;
+    var restoreTiming = testCase && testCase.fastDelays === false
+        ? function () {}
+        : Code205GradingTiming.install(Entry, CONFIG.GRADING_BLOCK_DELAY_MS);
 
     // Dialog hook — capture say/think/yell output
     var OrigDialog = Entry.Dialog;
@@ -773,6 +786,7 @@ function installTestHooks() {
         sayLog: sayLog,
         getWarning: function () { return warning; },
         restore: function () {
+            restoreTiming();
             Entry.Dialog = OrigDialog;
             if (Entry.toast) {
                 if (OrigWarning) Entry.toast.warning = OrigWarning;
@@ -813,12 +827,9 @@ function runSingleTest(testCase) {
     return new Promise(function (resolve) {
         engineInternalStop(); // clean slate before hooks install
 
-        var hooks = installTestHooks();
-        var setup = testCase.setup || {};
-        // Auto-answer: if setup.variables['대답'] exists, fill ask_and_wait input when it appears.
-        var autoAnswer = (setup.variables && setup.variables['대답'] !== undefined)
-            ? String(setup.variables['대답']) : null;
-        var timeoutMs = testCase.timeout || CONFIG.DEFAULT_TEST_TIMEOUT_MS;
+        var hooks = null;
+        var autoAnswer = null;
+        var timeoutMs;
 
         // Cleanup plumbing — unified exit via finish()
         var pollInterval = null;
@@ -832,7 +843,7 @@ function runSingleTest(testCase) {
             if (delayTimer) { clearTimeout(delayTimer); delayTimer = null; }
             if (finalTimer) { clearTimeout(finalTimer); finalTimer = null; }
             engineInternalStop();
-            hooks.restore();
+            if (hooks) hooks.restore();
             if (GradingState.currentCancel === cancelFn) GradingState.currentCancel = null;
             resolve(result);
         };
@@ -842,10 +853,22 @@ function runSingleTest(testCase) {
         // Edge case: cancelled before we started
         if (GradingState.cancelled) { finish({ cancelled: true }); return; }
 
-        // Setup → run → re-setup (Python mode overwrites during toggleRun)
-        applyTestSetup(setup);
-        engineInternalRun();
-        applyTestSetup(setup);
+        // Install cleanup before any setup that can throw. A missing script or
+        // malformed setup must become a case error, not strand the run's lock.
+        try {
+            hooks = installTestHooks(testCase);
+            var setup = testCase.setup || {};
+            // Auto-answer ask_and_wait once when its input appears.
+            autoAnswer = (setup.variables && setup.variables['대답'] !== undefined)
+                ? String(setup.variables['대답']) : null;
+            timeoutMs = testCase.timeout || CONFIG.DEFAULT_TEST_TIMEOUT_MS;
+            // Setup → run → re-setup (Python mode overwrites during toggleRun)
+            applyTestSetup(setup);
+            engineInternalRun();
+            applyTestSetup(setup);
+        } catch (error) {
+            return finish({ pass: false, error: true, errorMessage: '[오류] ' + String(error && error.message || error) });
+        }
 
         // Poll until one of: cancelled, warning, completion, timeout
         var startTime = Date.now();
